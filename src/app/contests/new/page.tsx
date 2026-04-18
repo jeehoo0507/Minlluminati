@@ -42,7 +42,7 @@ export default function NewContestPage() {
       })
       if (!res.ok) { toast.error((await res.json()).error ?? '오류 발생'); return }
       const contest = await res.json()
-      toast.success(session.user.role === 'ADMIN' ? '대회가 등록되었습니다' : '관리자 검토 후 공개됩니다')
+      toast.success(session?.user?.role === 'ADMIN' ? '대회가 등록되었습니다' : '관리자 검토 후 공개됩니다')
       router.push(`/contests/${contest.id}`)
     } finally { setLoading(false) }
   }
