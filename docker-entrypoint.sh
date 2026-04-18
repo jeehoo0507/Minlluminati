@@ -2,7 +2,7 @@
 set -e
 
 echo "🔧 Running database migrations..."
-npx prisma db push --skip-generate
+npx prisma db push
 
 echo "🌱 Seeding database..."
 node -e "
