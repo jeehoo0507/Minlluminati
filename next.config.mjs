@@ -2,7 +2,8 @@
 const nextConfig = {
   output: 'standalone',
   images: {
-    domains: ['lh3.googleusercontent.com'],
+    remotePatterns: [],
+    unoptimized: true,
   },
   experimental: {
     serverComponentsExternalPackages: ['@prisma/client', 'bcryptjs'],
