@@ -179,7 +179,7 @@ export default function GroupPage() {
                 <div className="flex items-center gap-1">
                   <span className="text-xs font-medium text-text-primary truncate">{m.user.name ?? '?'}</span>
                   {m.role === 'ADMIN' && <span className="text-xs px-1 bg-accent/10 text-accent rounded">운영</span>}
-                  {m.userId === group.ownerId && <span className="text-xs px-1 bg-yellow-50 text-yellow-700 border border-yellow-200 rounded">장</span>}
+                  {m.user.id === group.ownerId && <span className="text-xs px-1 bg-yellow-50 text-yellow-700 border border-yellow-200 rounded">장</span>}
                 </div>
                 <TierBadge points={m.user.points} />
               </div>
