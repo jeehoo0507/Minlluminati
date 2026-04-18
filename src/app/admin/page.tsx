@@ -52,7 +52,7 @@ export default function AdminPage() {
   const [newPoints, setNewPoints] = useState('')
   const [confirmAction, setConfirmAction] = useState<ConfirmAction>(null)
   const [permRequests, setPermRequests] = useState<PermReq[]>([])
-  const [tierConfig, setTierConfig] = useState(TIERS.map(t => ({ ...t })))
+  const [tierConfig, setTierConfig] = useState<{ name: string; min: number; max: number; color: string; bg: string }[]>(TIERS.map(t => ({ ...t, max: t.max === Infinity ? Infinity : Number(t.max) })))
   const [tierSaving, setTierSaving] = useState(false)
   const [contestPrizes, setContestPrizes] = useState<Record<string, { p1: number; p2: number; p3: number }>>({})
   const [editingContestPrize, setEditingContestPrize] = useState<string | null>(null)
