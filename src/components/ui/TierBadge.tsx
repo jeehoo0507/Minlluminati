@@ -13,12 +13,11 @@ export function TierBadge({ points, showPoints = false, size = 'sm' }: Props) {
 
   return (
     <span
-      className={`inline-flex items-center gap-1 rounded-full font-semibold ${sizes[size]}`}
-      style={{ backgroundColor: tier.color + '20', color: tier.color, border: `1px solid ${tier.color}40` }}
+      className={`inline-flex items-center gap-1 rounded font-semibold ${sizes[size]}`}
+      style={{ backgroundColor: tier.bg, color: tier.color, border: `1px solid ${tier.color}30` }}
     >
-      <span>{tier.emoji}</span>
       <span>{tier.name}</span>
-      {showPoints && <span className="opacity-70">· {points}pt</span>}
+      {showPoints && <span className="opacity-60">· {points}pt</span>}
     </span>
   )
 }

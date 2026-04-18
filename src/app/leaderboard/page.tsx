@@ -4,7 +4,8 @@ import { Avatar } from '@/components/ui/Avatar'
 import { TierBadge } from '@/components/ui/TierBadge'
 import { getTier } from '@/lib/scoring'
 import { useSession } from 'next-auth/react'
-import { Crown, FileText } from 'lucide-react'
+import { TIERS } from '@/lib/scoring'
+import { FileText } from 'lucide-react'
 
 interface LeaderUser {
   id: string
@@ -16,9 +17,9 @@ interface LeaderUser {
 }
 
 const RANK_STYLES = [
-  'text-yellow-400 bg-yellow-400/10 border-yellow-400/30',
-  'text-gray-300 bg-gray-300/10 border-gray-300/30',
-  'text-orange-400 bg-orange-400/10 border-orange-400/30',
+  'text-yellow-700 bg-yellow-50 border-yellow-300',
+  'text-gray-600 bg-gray-100 border-gray-300',
+  'text-orange-700 bg-orange-50 border-orange-300',
 ]
 
 export default function LeaderboardPage() {
@@ -38,36 +39,25 @@ export default function LeaderboardPage() {
   return (
     <div className="max-w-2xl mx-auto px-4 py-8 space-y-6">
       {/* Header */}
-      <div className="text-center">
-        <h1 className="text-2xl font-bold text-text-primary flex items-center justify-center gap-2">
-          <Crown className="text-yellow-400" size={22} />
-          랭킹
-        </h1>
-        <p className="text-sm text-text-secondary mt-1">문제를 올리고 추천을 받아 티어를 올려보세요!</p>
+      <div>
+        <h1 className="text-2xl font-bold text-text-primary">랭킹</h1>
+        <p className="text-sm text-text-secondary mt-1">문제를 올리고 추천을 받아 티어를 올려보세요</p>
       </div>
 
       {/* Tier guide */}
       <div className="grid grid-cols-3 sm:grid-cols-6 gap-2">
-        {[
-          { name: '새싹', emoji: '🌱', range: '0~29' },
-          { name: '나무', emoji: '🌳', range: '30~99' },
-          { name: '별', emoji: '⭐', range: '100~249' },
-          { name: '달', emoji: '🌙', range: '250~499' },
-          { name: '해', emoji: '☀️', range: '500~999' },
-          { name: '전설', emoji: '👑', range: '1000+' },
-        ].map((t) => (
-          <div key={t.name} className="text-center p-2 bg-surface border border-border rounded-xl">
-            <div className="text-xl">{t.emoji}</div>
-            <div className="text-xs font-semibold text-text-primary mt-0.5">{t.name}</div>
-            <div className="text-xs text-muted">{t.range}pt</div>
+        {TIERS.map((t) => (
+          <div key={t.name} className="text-center p-2 border border-border rounded-lg" style={{ background: t.bg }}>
+            <div className="text-xs font-semibold mt-0.5" style={{ color: t.color }}>{t.name}</div>
+            <div className="text-xs text-muted">{t.max === Infinity ? `${t.min}+` : `${t.min}~${t.max}`}pt</div>
           </div>
         ))}
       </div>
 
       {/* My rank */}
       {myRank > 0 && (
-        <div className="p-3 bg-accent/5 border border-accent/20 rounded-xl text-sm text-center text-accent">
-          내 순위: <strong>{myRank}위</strong> · {session?.user?.points ?? 0}pt · {getTier(session?.user?.points ?? 0).name} {getTier(session?.user?.points ?? 0).emoji}
+        <div className="p-3 bg-accent/5 border border-accent/20 rounded-lg text-sm text-center text-accent">
+          내 순위: <strong>{myRank}위</strong> · {session?.user?.points ?? 0}pt · {getTier(session?.user?.points ?? 0).name}
         </div>
       )}
 

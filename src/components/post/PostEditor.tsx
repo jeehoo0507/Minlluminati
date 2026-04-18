@@ -11,10 +11,10 @@ import { Upload, Eye, PenLine, X, Image as ImageIcon } from 'lucide-react'
 import toast from 'react-hot-toast'
 
 const TYPE_OPTIONS = [
-  { value: 'PROBLEM', label: '📝 문제' },
-  { value: 'SOLUTION', label: '✅ 풀이' },
-  { value: 'QUESTION', label: '❓ 질문' },
-  { value: 'FREE', label: '💬 자유' },
+  { value: 'PROBLEM', label: '문제' },
+  { value: 'SOLUTION', label: '풀이' },
+  { value: 'QUESTION', label: '질문' },
+  { value: 'FREE', label: '자유' },
 ]
 
 export function PostEditor() {
@@ -155,7 +155,7 @@ export function PostEditor() {
           </div>
         </div>
         {preview ? (
-          <div className="min-h-60 bg-surface border border-border rounded-lg p-4 prose-dark">
+          <div className="min-h-60 bg-surface border border-border rounded-lg p-4 prose-content">
             <ReactMarkdown remarkPlugins={[remarkMath, remarkGfm]} rehypePlugins={[rehypeKatex]}>
               {content || '*내용이 없습니다*'}
             </ReactMarkdown>
@@ -183,7 +183,7 @@ export function PostEditor() {
             disabled={uploading}
             className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-border text-xs text-text-secondary hover:text-text-primary hover:border-border-2 transition-colors"
           >
-            {uploading ? <span className="animate-spin">⏳</span> : <Upload size={12} />}
+            <Upload size={12} className={uploading ? 'animate-spin' : ''} />
             {uploading ? '업로드 중...' : '파일 추가'}
           </button>
         </div>

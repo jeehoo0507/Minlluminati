@@ -70,7 +70,6 @@ export default function PostPage() {
 
   if (!post) return (
     <div className="max-w-3xl mx-auto px-4 py-16 text-center">
-      <p className="text-4xl mb-3">🔍</p>
       <p className="text-text-secondary">게시글을 찾을 수 없습니다</p>
       <Link href="/feed" className="mt-4 inline-block text-accent text-sm hover:underline">피드로 돌아가기</Link>
     </div>
@@ -126,7 +125,7 @@ export default function PostPage() {
         </div>
 
         {/* Content */}
-        <div className="prose-dark">
+        <div className="prose-content">
           <ReactMarkdown remarkPlugins={[remarkMath, remarkGfm]} rehypePlugins={[rehypeKatex]}>
             {post.content}
           </ReactMarkdown>

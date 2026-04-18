@@ -2,20 +2,20 @@ import type { Config } from 'tailwindcss'
 
 const config: Config = {
   content: ['./src/**/*.{js,ts,jsx,tsx,mdx}'],
-  darkMode: 'class',
   theme: {
     extend: {
       colors: {
-        background: '#0a0a0a',
-        surface: '#141414',
-        'surface-2': '#1c1c1c',
-        border: '#2a2a2a',
-        'border-2': '#3a3a3a',
-        accent: '#4ade80',
-        'accent-dim': '#22c55e',
-        muted: '#6b7280',
-        'text-primary': '#f0f0f0',
-        'text-secondary': '#a0a0a0',
+        background: '#ffffff',
+        surface: '#f8f9fa',
+        'surface-2': '#f1f3f5',
+        border: '#e5e7eb',
+        'border-2': '#d1d5db',
+        accent: '#2563eb',
+        'accent-dim': '#1d4ed8',
+        'accent-light': '#eff6ff',
+        muted: '#9ca3af',
+        'text-primary': '#111827',
+        'text-secondary': '#6b7280',
       },
       fontFamily: {
         sans: [
@@ -27,20 +27,6 @@ const config: Config = {
           'sans-serif',
         ],
         mono: ['JetBrains Mono', 'Fira Code', 'monospace'],
-      },
-      animation: {
-        'fade-in': 'fadeIn 0.2s ease-in-out',
-        'slide-up': 'slideUp 0.3s ease-out',
-      },
-      keyframes: {
-        fadeIn: {
-          '0%': { opacity: '0' },
-          '100%': { opacity: '1' },
-        },
-        slideUp: {
-          '0%': { transform: 'translateY(8px)', opacity: '0' },
-          '100%': { transform: 'translateY(0)', opacity: '1' },
-        },
       },
     },
   },

@@ -99,7 +99,6 @@ export default function SubjectPage() {
           </div>
         ) : (
           <div className="text-center py-16">
-            <p className="text-4xl mb-3">📭</p>
             <p className="text-text-secondary">아직 게시글이 없습니다</p>
           </div>
         )}

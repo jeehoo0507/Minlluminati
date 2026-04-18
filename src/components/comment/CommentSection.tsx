@@ -81,7 +81,7 @@ export function CommentSection({ postId }: { postId: string }) {
                   </button>
                 )}
               </div>
-              <div className="prose-dark text-sm bg-surface-2 rounded-lg px-3 py-2 border border-border">
+              <div className="prose-content text-sm bg-surface-2 rounded-lg px-3 py-2 border border-border">
                 <ReactMarkdown remarkPlugins={[remarkMath]} rehypePlugins={[rehypeKatex]}>
                   {c.content}
                 </ReactMarkdown>

@@ -100,7 +100,7 @@ export default function AdminPage() {
             새 멤버 초대
           </h2>
           <p className="text-xs text-text-secondary">
-            이메일을 등록하면 해당 이메일로 <strong>/register</strong>에서 가입할 수 있습니다
+            이메일을 등록하면 해당 이메일로 로그인 시 비밀번호를 설정할 수 있습니다
           </p>
           <div className="flex gap-2">
             <input

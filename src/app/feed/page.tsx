@@ -108,7 +108,6 @@ export default function FeedPage() {
           </div>
         ) : (
           <div className="text-center py-16">
-            <p className="text-4xl mb-3">📭</p>
             <p className="text-text-secondary">아직 게시글이 없습니다</p>
             {session?.user && (
               <Link href="/post/new" className="mt-4 inline-block text-accent text-sm hover:underline">

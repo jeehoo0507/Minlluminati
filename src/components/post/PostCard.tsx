@@ -20,10 +20,10 @@ interface PostCardProps {
 }
 
 const TYPE_LABELS: Record<string, { label: string; color: string }> = {
-  PROBLEM:  { label: '문제', color: 'text-blue-400 bg-blue-400/10 border-blue-400/20' },
-  QUESTION: { label: '질문', color: 'text-yellow-400 bg-yellow-400/10 border-yellow-400/20' },
-  FREE:     { label: '자유', color: 'text-purple-400 bg-purple-400/10 border-purple-400/20' },
-  SOLUTION: { label: '풀이', color: 'text-accent bg-accent/10 border-accent/20' },
+  PROBLEM:  { label: '문제', color: 'text-blue-700 bg-blue-50 border-blue-200' },
+  QUESTION: { label: '질문', color: 'text-amber-700 bg-amber-50 border-amber-200' },
+  FREE:     { label: '자유', color: 'text-violet-700 bg-violet-50 border-violet-200' },
+  SOLUTION: { label: '풀이', color: 'text-green-700 bg-green-50 border-green-200' },
 }
 
 export function PostCard({ post }: PostCardProps) {
