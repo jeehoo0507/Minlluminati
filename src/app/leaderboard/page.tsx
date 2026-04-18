@@ -1,5 +1,6 @@
 'use client'
 import { useState, useEffect } from 'react'
+import Link from 'next/link'
 import { Avatar } from '@/components/ui/Avatar'
 import { TierBadge } from '@/components/ui/TierBadge'
 import { getTier } from '@/lib/scoring'
@@ -74,8 +75,9 @@ export default function LeaderboardPage() {
             const rank = idx + 1
             const isMe = session?.user?.id === user.id
             return (
-              <div
+              <Link
                 key={user.id}
+                href={`/profile/${user.id}`}
                 className={`flex items-center gap-3 p-3 rounded-xl border transition-colors ${
                   isMe ? 'border-accent/30 bg-accent/5' : 'border-border bg-surface hover:border-border-2 hover:bg-surface-2'
                 }`}
@@ -104,7 +106,7 @@ export default function LeaderboardPage() {
                 <div className="text-right shrink-0">
                   <div className="text-sm font-bold text-accent">{user.points}pt</div>
                 </div>
-              </div>
+              </Link>
             )
           })}
         </div>

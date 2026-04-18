@@ -8,7 +8,7 @@ const SUBJECT_GROUPS = [
   {
     label: '수학',
     icon: BookOpen,
-    subjects: ['MATH1_MID', 'MATH1_FINAL', 'MATH2_MID', 'MATH2_FINAL'] as SubjectKey[],
+    subjects: ['MATH1', 'MATH2'] as SubjectKey[],
   },
   {
     label: '자유/기타',

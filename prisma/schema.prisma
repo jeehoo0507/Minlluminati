@@ -38,6 +38,10 @@ model User {
   groupPosts       GroupPost[]
   groupMessages    GroupMessage[]
 
+  // Rivals
+  rivals   Rival[] @relation("UserRivals")
+  rivalOf  Rival[] @relation("UserRivalOf")
+
   @@map("users")
 }
 
@@ -264,4 +268,16 @@ model VerificationToken {
 
   @@unique([identifier, token])
   @@map("verification_tokens")
+}
+
+model Rival {
+  id        String   @id @default(cuid())
+  userId    String
+  rivalId   String
+  user      User     @relation("UserRivals", fields: [userId], references: [id], onDelete: Cascade)
+  rival     User     @relation("UserRivalOf", fields: [rivalId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+
+  @@unique([userId, rivalId])
+  @@map("rivals")
 }

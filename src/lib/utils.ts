@@ -12,28 +12,34 @@ export function timeAgo(date: Date | string) {
 }
 
 export const SUBJECTS = {
-  MATH1_MID:   { label: '공통수학1 중간', short: '수1-중', category: 'math' },
-  MATH1_FINAL: { label: '공통수학1 기말', short: '수1-기', category: 'math' },
-  MATH2_MID:   { label: '공통수학2 중간', short: '수2-중', category: 'math' },
-  MATH2_FINAL: { label: '공통수학2 기말', short: '수2-기', category: 'math' },
-  FREE:        { label: '자유 문제', short: '자유', category: 'free' },
-  PROOF:       { label: '증명', short: '증명', category: 'free' },
-  TIPS:        { label: '날먹 기술', short: '날먹', category: 'free' },
-  PHYSICS:     { label: '물리', short: '물리', category: 'science' },
-  CHEMISTRY:   { label: '화학', short: '화학', category: 'science' },
-  CS:          { label: '정보/코딩', short: '정보', category: 'science' },
-  EARTH:       { label: '지구과학', short: '지구', category: 'science' },
-  QUESTION:    { label: '질문', short: '질문', category: 'community' },
-  BOARD:       { label: '자유게시판', short: '자유판', category: 'community' },
+  MATH1:     { label: '공통수학 1', short: '수1', category: 'math' },
+  MATH2:     { label: '공통수학 2', short: '수2', category: 'math' },
+  FREE:      { label: '자유 문제', short: '자유', category: 'free' },
+  PROOF:     { label: '증명', short: '증명', category: 'free' },
+  TIPS:      { label: '날먹 기술', short: '날먹', category: 'free' },
+  PHYSICS:   { label: '물리', short: '물리', category: 'science' },
+  CHEMISTRY: { label: '화학', short: '화학', category: 'science' },
+  CS:        { label: '정보/코딩', short: '정보', category: 'science' },
+  EARTH:     { label: '지구과학', short: '지구', category: 'science' },
+  QUESTION:  { label: '질문', short: '질문', category: 'community' },
+  BOARD:     { label: '자유게시판', short: '자유판', category: 'community' },
 } as const
 
 export type SubjectKey = keyof typeof SUBJECTS
 
 export const UNITS: Record<string, string[]> = {
-  MATH1_MID: ['다항식의 연산', '인수분해', '항등식과 미정계수법', '나머지 정리', '실수', '복소수', '일차-이차 방정식', '이차방정식의 근과 계수와의 관계', '이차방정식과 이차함수'],
-  MATH1_FINAL: ['집합', '명제', '함수', '유리식과 무리식'],
-  MATH2_MID: ['지수와 로그', '지수함수와 로그함수', '삼각함수'],
-  MATH2_FINAL: ['수열', '수학적 귀납법', '극한과 연속'],
+  MATH1: [
+    '다항식의 연산', '인수분해', '항등식과 미정계수법', '나머지 정리',
+    '실수', '복소수', '일차-이차 방정식', '이차방정식의 근과 계수와의 관계', '이차방정식과 이차함수',
+    '최대와 최소', '삼차방정식과 사차방정식', '연립방정식',
+    '일차부등식과 연립일차부등식', '이차부등식과 연립이차부등식',
+    '경우의 수', '순열과 조합', '행렬의 뜻', '행렬의 연산',
+  ],
+  MATH2: [
+    '평면좌표', '직선의 방정식', '원의 방정식', '도형의 이동',
+    '집합', '집합의 연산법칙', '명제와 조건', '명제의 증명',
+    '함수', '합성함수와 역함수', '다항함수의 그래프', '유리함수의 그래프', '무리함수의 그래프',
+  ],
 }
 
 export function parseJsonSafe<T>(str: string, fallback: T): T {

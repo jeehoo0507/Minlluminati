@@ -26,7 +26,7 @@ export default function EditPostPage() {
 
   const [title, setTitle] = useState('')
   const [content, setContent] = useState('')
-  const [subject, setSubject] = useState<SubjectKey>('MATH1_MID')
+  const [subject, setSubject] = useState<SubjectKey>('MATH1')
   const [unit, setUnit] = useState('')
   const [type, setType] = useState('PROBLEM')
   const [preview, setPreview] = useState(false)

@@ -3,7 +3,7 @@ import { SUBJECTS, type SubjectKey } from '@/lib/utils'
 import { BookOpen, Lightbulb, FlaskConical, MessageSquare } from 'lucide-react'
 
 const GROUPS = [
-  { label: '수학', icon: BookOpen, color: 'text-blue-700', keys: ['MATH1_MID', 'MATH1_FINAL', 'MATH2_MID', 'MATH2_FINAL'] as SubjectKey[] },
+  { label: '수학', icon: BookOpen, color: 'text-blue-700', keys: ['MATH1', 'MATH2'] as SubjectKey[] },
   { label: '자유/기타', icon: Lightbulb, color: 'text-accent', keys: ['FREE', 'PROOF', 'TIPS'] as SubjectKey[] },
   { label: '과학/정보', icon: FlaskConical, color: 'text-violet-700', keys: ['PHYSICS', 'CHEMISTRY', 'CS', 'EARTH'] as SubjectKey[] },
   { label: '커뮤니티', icon: MessageSquare, color: 'text-amber-700', keys: ['QUESTION', 'BOARD'] as SubjectKey[] },
