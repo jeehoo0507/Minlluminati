@@ -77,7 +77,7 @@ export function CommentSection({ postId }: { postId: string }) {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ content: text }),
       })
-      if (res.ok) { setComments((p) => [...p, await res.json()]); setText('') }
+      if (res.ok) { const c = await res.json(); setComments((p) => [...p, c]); setText('') }
       else toast.error('댓글 등록 실패')
     } finally {
       setLoading(false)
