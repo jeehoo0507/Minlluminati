@@ -9,16 +9,16 @@ datasource db {
 }
 
 model User {
-  id            String    @id @default(cuid())
-  email         String    @unique
-  name          String?
-  password      String?
-  image         String?
-  role          String    @default("USER") // USER | ADMIN
-  points        Int       @default(0)
-  passwordSet   Boolean   @default(false)
-  createdAt     DateTime  @default(now())
-  updatedAt     DateTime  @updatedAt
+  id          String   @id @default(cuid())
+  email       String   @unique
+  name        String?
+  password    String?
+  image       String?
+  role        String   @default("USER") // USER | ADMIN
+  points      Int      @default(0)
+  passwordSet Boolean  @default(false)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
 
   posts         Post[]
   likes         Like[]
@@ -26,36 +26,47 @@ model User {
   accounts      Account[]
   sessions      Session[]
 
+  // Contest
+  contestOrganizer      ContestOrganizer?
+  organizedContests     Contest[]           @relation("ContestOrganizer")
+  contestParticipations ContestParticipant[]
+  contestSubmissions    ContestSubmission[]
+
+  // Group
+  ownedGroups      Group[]       @relation("GroupOwner")
+  groupMemberships GroupMember[]
+  groupPosts       GroupPost[]
+  groupMessages    GroupMessage[]
+
   @@map("users")
 }
 
-// 관리자가 초대할 수 있는 이메일 목록
 model AllowedEmail {
-  id        String   @id @default(cuid())
-  email     String   @unique
+  id        String    @id @default(cuid())
+  email     String    @unique
   usedAt    DateTime?
-  createdAt DateTime @default(now())
+  createdAt DateTime  @default(now())
 
   @@map("allowed_emails")
 }
 
 model Post {
-  id          String    @id @default(cuid())
-  title       String
-  content     String    // Markdown + LaTeX
-  subject     String    // MATH1_MID | MATH1_FINAL | MATH2_MID | MATH2_FINAL | FREE | PROOF | TIPS | PHYSICS | CHEMISTRY | CS | EARTH | QUESTION | BOARD
-  unit        String?   // 단원 (다항식의 연산, 인수분해, ...)
-  type        String    @default("PROBLEM") // PROBLEM | QUESTION | FREE | SOLUTION
-  imageUrls   String    @default("[]") // JSON string
-  fileUrls    String    @default("[]") // JSON string
-  pointsAwarded Int    @default(0) // 이 포스트로 얻은 점수 기록
-  authorId    String
-  author      User      @relation(fields: [authorId], references: [id], onDelete: Cascade)
-  likes       Like[]
-  comments    Comment[]
-  deletedAt   DateTime?
-  createdAt   DateTime  @default(now())
-  updatedAt   DateTime  @updatedAt
+  id            String    @id @default(cuid())
+  title         String
+  content       String
+  subject       String
+  unit          String?
+  type          String    @default("PROBLEM")
+  imageUrls     String    @default("[]")
+  fileUrls      String    @default("[]")
+  pointsAwarded Int       @default(0)
+  authorId      String
+  author        User      @relation(fields: [authorId], references: [id], onDelete: Cascade)
+  likes         Like[]
+  comments      Comment[]
+  deletedAt     DateTime?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
 
   @@map("posts")
 }
@@ -85,7 +96,138 @@ model Comment {
   @@map("comments")
 }
 
-// NextAuth 필수 모델
+// ───────────────────────────── Contest ─────────────────────────────
+
+model Contest {
+  id          String   @id @default(cuid())
+  title       String
+  description String
+  rules       String   @default("")
+  status      String   @default("DRAFT") // DRAFT | PENDING | APPROVED | ONGOING | ENDED
+  startTime   DateTime?
+  durationMin Int      @default(120)
+  organizerId String
+  organizer   User     @relation("ContestOrganizer", fields: [organizerId], references: [id])
+  problems    ContestProblem[]
+  participants ContestParticipant[]
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@map("contests")
+}
+
+model ContestProblem {
+  id        String  @id @default(cuid())
+  contestId String
+  contest   Contest @relation(fields: [contestId], references: [id], onDelete: Cascade)
+  label     String  // A, B, C ...
+  title     String
+  content   String
+  answer    String
+  points    Int     @default(100)
+  imageUrls String  @default("[]")
+  order     Int     @default(0)
+  submissions ContestSubmission[]
+
+  @@map("contest_problems")
+}
+
+model ContestParticipant {
+  id        String   @id @default(cuid())
+  contestId String
+  userId    String
+  contest   Contest  @relation(fields: [contestId], references: [id], onDelete: Cascade)
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  score     Int      @default(0)
+  joinedAt  DateTime @default(now())
+
+  @@unique([contestId, userId])
+  @@map("contest_participants")
+}
+
+model ContestSubmission {
+  id        String   @id @default(cuid())
+  problemId String
+  userId    String
+  answer    String
+  correct   Boolean  @default(false)
+  problem   ContestProblem @relation(fields: [problemId], references: [id], onDelete: Cascade)
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+
+  @@unique([problemId, userId])
+  @@map("contest_submissions")
+}
+
+model ContestOrganizer {
+  id        String   @id @default(cuid())
+  userId    String   @unique
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  grantedAt DateTime @default(now())
+
+  @@map("contest_organizers")
+}
+
+// ───────────────────────────── Group ─────────────────────────────
+
+model Group {
+  id          String   @id @default(cuid())
+  name        String   @unique
+  description String   @default("")
+  avatar      String?
+  isPublic    Boolean  @default(true)
+  ownerId     String
+  owner       User     @relation("GroupOwner", fields: [ownerId], references: [id])
+  members     GroupMember[]
+  posts       GroupPost[]
+  messages    GroupMessage[]
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@map("groups")
+}
+
+model GroupMember {
+  id       String   @id @default(cuid())
+  groupId  String
+  userId   String
+  role     String   @default("MEMBER") // MEMBER | ADMIN
+  group    Group    @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  user     User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  joinedAt DateTime @default(now())
+
+  @@unique([groupId, userId])
+  @@map("group_members")
+}
+
+model GroupPost {
+  id        String   @id @default(cuid())
+  groupId   String
+  authorId  String
+  title     String
+  content   String
+  group     Group    @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  author    User     @relation(fields: [authorId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("group_posts")
+}
+
+model GroupMessage {
+  id        String   @id @default(cuid())
+  groupId   String
+  authorId  String
+  content   String
+  group     Group    @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  author    User     @relation(fields: [authorId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+
+  @@map("group_messages")
+}
+
+// ───────────────────────────── NextAuth ─────────────────────────────
+
 model Account {
   id                String  @id @default(cuid())
   userId            String

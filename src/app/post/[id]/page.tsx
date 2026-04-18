@@ -10,7 +10,7 @@ import { Avatar } from '@/components/ui/Avatar'
 import { TierBadge } from '@/components/ui/TierBadge'
 import { CommentSection } from '@/components/comment/CommentSection'
 import { SUBJECTS, timeAgo, parseJsonSafe, type SubjectKey } from '@/lib/utils'
-import { Heart, Trash2, ArrowLeft, FileText } from 'lucide-react'
+import { Heart, Trash2, ArrowLeft, FileText, Pencil } from 'lucide-react'
 import Link from 'next/link'
 import toast from 'react-hot-toast'
 
@@ -116,12 +116,19 @@ export default function PostPage() {
               <span className="text-xs text-muted">{timeAgo(post.createdAt)}</span>
             </div>
           </div>
-          {(session?.user?.id === post.author.id || session?.user?.role === 'ADMIN') && (
-            <button onClick={handleDelete} className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs text-muted hover:text-red-400 hover:bg-red-400/5 border border-transparent hover:border-red-400/20 transition-all">
-              <Trash2 size={13} />
-              {session?.user?.role === 'ADMIN' && session?.user?.id !== post.author.id ? '관리자 삭제 (포인트 환수)' : '삭제'}
-            </button>
-          )}
+          <div className="flex items-center gap-1">
+            {session?.user?.id === post.author.id && (
+              <Link href={`/post/${id}/edit`} className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs text-muted hover:text-accent hover:bg-accent/5 border border-transparent hover:border-accent/20 transition-all">
+                <Pencil size={13} /> 수정
+              </Link>
+            )}
+            {(session?.user?.id === post.author.id || session?.user?.role === 'ADMIN') && (
+              <button onClick={handleDelete} className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs text-muted hover:text-red-400 hover:bg-red-400/5 border border-transparent hover:border-red-400/20 transition-all">
+                <Trash2 size={13} />
+                {session?.user?.role === 'ADMIN' && session?.user?.id !== post.author.id ? '관리자 삭제' : '삭제'}
+              </button>
+            )}
+          </div>
         </div>
 
         {/* Content */}

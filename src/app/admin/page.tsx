@@ -5,11 +5,21 @@ import { useRouter } from 'next/navigation'
 import { Avatar } from '@/components/ui/Avatar'
 import { TierBadge } from '@/components/ui/TierBadge'
 import { timeAgo } from '@/lib/utils'
-import { UserPlus, Trash2, Shield, ShieldOff } from 'lucide-react'
+import { UserPlus, Trash2, Shield, ShieldOff, CheckCircle, XCircle, Swords } from 'lucide-react'
 import toast from 'react-hot-toast'
 
 interface AdminUser {
   id: string; email: string; name?: string | null; image?: string | null; role: string; points: number; createdAt: string
+}
+
+interface PendingContest {
+  id: string; title: string; createdAt: string
+  organizer: { user: { id: string; name?: string | null } }
+}
+
+interface OrganizerRecord {
+  id: string; userId: string
+  user: { id: string; name?: string | null; email: string; image?: string | null }
 }
 
 export default function AdminPage() {
@@ -18,17 +28,69 @@ export default function AdminPage() {
   const [users, setUsers] = useState<AdminUser[]>([])
   const [inviteEmail, setInviteEmail] = useState('')
   const [loading, setLoading] = useState(false)
-  const [tab, setTab] = useState<'users' | 'invite'>('users')
+  const [tab, setTab] = useState<'users' | 'invite' | 'contests' | 'organizers'>('users')
+  const [pendingContests, setPendingContests] = useState<PendingContest[]>([])
+  const [organizers, setOrganizers] = useState<OrganizerRecord[]>([])
+  const [orgEmail, setOrgEmail] = useState('')
+  const [orgLoading, setOrgLoading] = useState(false)
 
   useEffect(() => {
     if (status === 'loading') return
     if (session?.user?.role !== 'ADMIN') { router.replace('/feed'); return }
     loadUsers()
+    loadPendingContests()
+    loadOrganizers()
   }, [session, status, router])
 
   async function loadUsers() {
     const res = await fetch('/api/admin/users')
     if (res.ok) setUsers(await res.json())
+  }
+
+  async function loadPendingContests() {
+    const res = await fetch('/api/admin/contests')
+    if (res.ok) setPendingContests(await res.json())
+  }
+
+  async function loadOrganizers() {
+    const res = await fetch('/api/admin/organizers')
+    if (res.ok) setOrganizers(await res.json())
+  }
+
+  async function reviewContest(contestId: string, action: 'APPROVED' | 'REJECTED') {
+    const res = await fetch('/api/admin/contests', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ contestId, action }),
+    })
+    if (res.ok) {
+      toast.success(action === 'APPROVED' ? '승인되었습니다' : '거절되었습니다')
+      setPendingContests((p) => p.filter((c) => c.id !== contestId))
+    } else toast.error('처리 실패')
+  }
+
+  async function addOrganizer() {
+    if (!orgEmail.trim()) return
+    setOrgLoading(true)
+    try {
+      const res = await fetch('/api/admin/organizers', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: orgEmail.trim() }),
+      })
+      if (res.ok) { toast.success('권한 부여 완료'); setOrgEmail(''); loadOrganizers() }
+      else toast.error((await res.json()).error ?? '오류 발생')
+    } finally { setOrgLoading(false) }
+  }
+
+  async function removeOrganizer(userId: string) {
+    const res = await fetch('/api/admin/organizers', {
+      method: 'DELETE',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ userId }),
+    })
+    if (res.ok) { toast.success('권한 해제 완료'); loadOrganizers() }
+    else toast.error('처리 실패')
   }
 
   async function invite() {
@@ -81,14 +143,19 @@ export default function AdminPage() {
       </div>
 
       {/* Tabs */}
-      <div className="flex gap-1 p-1 bg-surface rounded-xl border border-border w-fit">
-        {(['users', 'invite'] as const).map((t) => (
+      <div className="flex flex-wrap gap-1 p-1 bg-surface rounded-xl border border-border w-fit">
+        {([
+          { key: 'users', label: `유저 목록 (${users.length})` },
+          { key: 'invite', label: '이메일 초대' },
+          { key: 'contests', label: `대회 검토${pendingContests.length > 0 ? ` (${pendingContests.length})` : ''}` },
+          { key: 'organizers', label: '대회 권한' },
+        ] as const).map(({ key, label }) => (
           <button
-            key={t}
-            onClick={() => setTab(t)}
-            className={`px-4 py-1.5 rounded-lg text-sm font-medium transition-colors ${tab === t ? 'bg-accent text-background' : 'text-text-secondary hover:text-text-primary'}`}
+            key={key}
+            onClick={() => setTab(key)}
+            className={`px-4 py-1.5 rounded-lg text-sm font-medium transition-colors ${tab === key ? 'bg-accent text-background' : 'text-text-secondary hover:text-text-primary'}`}
           >
-            {t === 'users' ? `유저 목록 (${users.length})` : '이메일 초대'}
+            {label}
           </button>
         ))}
       </div>
@@ -118,6 +185,116 @@ export default function AdminPage() {
             >
               {loading ? '...' : '초대'}
             </button>
+          </div>
+        </div>
+      )}
+
+      {tab === 'contests' && (
+        <div className="bg-surface border border-border rounded-2xl overflow-hidden">
+          {pendingContests.length === 0 ? (
+            <div className="text-center py-12 text-text-secondary text-sm">검토 대기 중인 대회가 없습니다</div>
+          ) : (
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-border bg-surface-2">
+                  <th className="text-left px-4 py-3 text-xs font-semibold text-text-secondary">대회명</th>
+                  <th className="text-left px-4 py-3 text-xs font-semibold text-text-secondary">주최자</th>
+                  <th className="text-left px-4 py-3 text-xs font-semibold text-text-secondary hidden md:table-cell">신청일</th>
+                  <th className="text-right px-4 py-3 text-xs font-semibold text-text-secondary">액션</th>
+                </tr>
+              </thead>
+              <tbody>
+                {pendingContests.map((c) => (
+                  <tr key={c.id} className="border-b border-border last:border-0 hover:bg-surface-2 transition-colors">
+                    <td className="px-4 py-3 font-medium text-text-primary">{c.title}</td>
+                    <td className="px-4 py-3 text-text-secondary">{c.organizer?.user?.name ?? '?'}</td>
+                    <td className="px-4 py-3 text-muted text-xs hidden md:table-cell">{timeAgo(c.createdAt)}</td>
+                    <td className="px-4 py-3">
+                      <div className="flex items-center justify-end gap-1">
+                        <button
+                          onClick={() => reviewContest(c.id, 'APPROVED')}
+                          className="flex items-center gap-1 px-2 py-1 rounded-lg text-xs text-emerald-600 hover:bg-emerald-50 transition-colors"
+                        >
+                          <CheckCircle size={13} /> 승인
+                        </button>
+                        <button
+                          onClick={() => reviewContest(c.id, 'REJECTED')}
+                          className="flex items-center gap-1 px-2 py-1 rounded-lg text-xs text-red-500 hover:bg-red-50 transition-colors"
+                        >
+                          <XCircle size={13} /> 거절
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+        </div>
+      )}
+
+      {tab === 'organizers' && (
+        <div className="space-y-4">
+          <div className="bg-surface border border-border rounded-2xl p-6 space-y-4">
+            <h2 className="text-sm font-semibold text-text-primary flex items-center gap-2">
+              <Swords size={15} />
+              대회 주최자 권한 부여
+            </h2>
+            <div className="flex gap-2">
+              <input
+                value={orgEmail}
+                onChange={(e) => setOrgEmail(e.target.value)}
+                onKeyDown={(e) => e.key === 'Enter' && addOrganizer()}
+                placeholder="이메일"
+                type="email"
+                className="flex-1 bg-surface-2 border border-border rounded-lg px-3 py-2 text-sm text-text-primary placeholder:text-muted focus:outline-none focus:border-accent"
+              />
+              <button
+                onClick={addOrganizer}
+                disabled={orgLoading || !orgEmail.trim()}
+                className="px-4 py-2 rounded-lg bg-accent text-background text-sm font-semibold hover:bg-accent-dim transition-colors disabled:opacity-50"
+              >
+                {orgLoading ? '...' : '부여'}
+              </button>
+            </div>
+          </div>
+          <div className="bg-surface border border-border rounded-2xl overflow-hidden">
+            {organizers.length === 0 ? (
+              <div className="text-center py-10 text-text-secondary text-sm">권한을 가진 유저가 없습니다</div>
+            ) : (
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b border-border bg-surface-2">
+                    <th className="text-left px-4 py-3 text-xs font-semibold text-text-secondary">유저</th>
+                    <th className="text-left px-4 py-3 text-xs font-semibold text-text-secondary hidden sm:table-cell">이메일</th>
+                    <th className="text-right px-4 py-3 text-xs font-semibold text-text-secondary">액션</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {organizers.map((o) => (
+                    <tr key={o.id} className="border-b border-border last:border-0 hover:bg-surface-2 transition-colors">
+                      <td className="px-4 py-3">
+                        <div className="flex items-center gap-2">
+                          <Avatar name={o.user.name} image={o.user.image} size={28} />
+                          <span className="font-medium text-text-primary">{o.user.name ?? '?'}</span>
+                        </div>
+                      </td>
+                      <td className="px-4 py-3 text-text-secondary hidden sm:table-cell">{o.user.email}</td>
+                      <td className="px-4 py-3">
+                        <div className="flex justify-end">
+                          <button
+                            onClick={() => removeOrganizer(o.userId)}
+                            className="p-1.5 rounded-lg text-muted hover:text-red-400 hover:bg-red-400/10 transition-colors"
+                          >
+                            <Trash2 size={14} />
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
           </div>
         </div>
       )}

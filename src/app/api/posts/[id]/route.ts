@@ -50,10 +50,8 @@ export async function DELETE(_: NextRequest, { params }: { params: { id: string 
   const isAdmin = session.user.role === 'ADMIN'
   if (!isAuthor && !isAdmin) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
 
-  // 관리자가 삭제하면 포인트 환수
-  if (isAdmin && !isAuthor) {
-    await revokeAllPostPoints(params.id)
-  }
+  // 삭제 시 항상 포인트 환수 (본인/관리자 모두)
+  await revokeAllPostPoints(params.id)
 
   await prisma.post.update({
     where: { id: params.id },

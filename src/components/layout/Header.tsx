@@ -5,8 +5,9 @@ import { usePathname } from 'next/navigation'
 import { Avatar } from '@/components/ui/Avatar'
 import { TierBadge } from '@/components/ui/TierBadge'
 import { cn } from '@/lib/utils'
-import { LogOut, Shield, Trophy, PenLine } from 'lucide-react'
+import { LogOut, Shield, Trophy, PenLine, User, Users, Swords } from 'lucide-react'
 import { useState } from 'react'
+import { ThemeToggle } from '@/components/ui/ThemeToggle'
 
 export function Header() {
   const { data: session } = useSession()
@@ -28,6 +29,8 @@ export function Header() {
             { href: '/feed', label: '피드' },
             { href: '/subjects', label: '과목별' },
             { href: '/leaderboard', label: '랭킹' },
+            { href: '/contests', label: '대회' },
+            { href: '/groups', label: '그룹' },
           ].map(({ href, label }) => (
             <Link
               key={href}
@@ -46,6 +49,7 @@ export function Header() {
 
         {/* Right */}
         <div className="flex items-center gap-2">
+          <ThemeToggle />
           {session?.user ? (
             <>
               <Link
@@ -81,6 +85,14 @@ export function Header() {
                           관리자 패널
                         </Link>
                       )}
+                      <Link
+                        href="/profile"
+                        onClick={() => setDropOpen(false)}
+                        className="flex items-center gap-2 px-3 py-2 text-sm text-text-secondary hover:text-text-primary hover:bg-surface-2 transition-colors"
+                      >
+                        <User size={14} />
+                        프로필 설정
+                      </Link>
                       <Link
                         href="/leaderboard"
                         onClick={() => setDropOpen(false)}
