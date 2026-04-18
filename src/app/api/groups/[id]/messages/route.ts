@@ -29,11 +29,11 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
   })
   if (!member) return NextResponse.json({ error: '그룹 멤버만 채팅할 수 있습니다' }, { status: 403 })
 
-  const { content } = await req.json()
-  if (!content?.trim()) return NextResponse.json({ error: '내용을 입력해주세요' }, { status: 400 })
+  const { content, imageUrl } = await req.json()
+  if (!content?.trim() && !imageUrl) return NextResponse.json({ error: '내용을 입력해주세요' }, { status: 400 })
 
   const message = await prisma.groupMessage.create({
-    data: { groupId: params.id, authorId: session.user.id, content: content.trim() },
+    data: { groupId: params.id, authorId: session.user.id, content: content?.trim() ?? '', imageUrl: imageUrl ?? null },
     include: { author: { select: { id: true, name: true, image: true, points: true } } },
   })
   return NextResponse.json(message, { status: 201 })

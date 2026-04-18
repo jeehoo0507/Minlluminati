@@ -16,13 +16,18 @@ export async function GET() {
 
 export async function PATCH(req: NextRequest) {
   await requireAdmin()
-  const { contestId, action } = await req.json()
-  if (!contestId || !['approve', 'reject'].includes(action)) {
+  const { contestId, action, prize1, prize2, prize3 } = await req.json()
+  if (!contestId || !['APPROVED', 'REJECTED'].includes(action)) {
     return NextResponse.json({ error: '잘못된 요청' }, { status: 400 })
   }
   const updated = await prisma.contest.update({
     where: { id: contestId },
-    data: { status: action === 'approve' ? 'APPROVED' : 'DRAFT' },
+    data: {
+      status: action === 'APPROVED' ? 'APPROVED' : 'DRAFT',
+      ...(prize1 !== undefined ? { prize1: prize1 ? Number(prize1) : null } : {}),
+      ...(prize2 !== undefined ? { prize2: prize2 ? Number(prize2) : null } : {}),
+      ...(prize3 !== undefined ? { prize3: prize3 ? Number(prize3) : null } : {}),
+    },
   })
   return NextResponse.json(updated)
 }

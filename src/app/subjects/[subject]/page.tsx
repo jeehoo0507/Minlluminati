@@ -2,7 +2,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import { useParams } from 'next/navigation'
 import { PostCard } from '@/components/post/PostCard'
-import { Sidebar } from '@/components/layout/Sidebar'
+import { Sidebar, MobileSidebarButton } from '@/components/layout/Sidebar'
 import { SUBJECTS, UNITS, type SubjectKey } from '@/lib/utils'
 import Link from 'next/link'
 import { PenLine } from 'lucide-react'
@@ -52,9 +52,12 @@ export default function SubjectPage() {
       <div className="flex-1 min-w-0 space-y-4">
         {/* Header */}
         <div className="flex items-start justify-between">
-          <div>
-            <h1 className="text-xl font-bold text-text-primary">{subjectInfo.label}</h1>
-            <p className="text-sm text-text-secondary mt-0.5">총 {total}개의 게시글</p>
+          <div className="flex items-center gap-2">
+            <MobileSidebarButton />
+            <div>
+              <h1 className="text-xl font-bold text-text-primary">{subjectInfo.label}</h1>
+              <p className="text-sm text-text-secondary mt-0.5">총 {total}개의 게시글</p>
+            </div>
           </div>
           {session?.user && (
             <Link

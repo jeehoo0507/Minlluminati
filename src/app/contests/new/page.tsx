@@ -2,10 +2,11 @@
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { useSession } from 'next-auth/react'
-import { Plus, Trash2 } from 'lucide-react'
+import { Plus, Trash2, UserPlus, X } from 'lucide-react'
 import toast from 'react-hot-toast'
 
 interface Problem { title: string; content: string; answer: string; points: number }
+interface Contributor { query: string; role: 'CONTRIBUTOR' | 'REVIEWER' }
 
 export default function NewContestPage() {
   const { data: session } = useSession()
@@ -15,7 +16,13 @@ export default function NewContestPage() {
   const [description, setDescription] = useState('')
   const [rules, setRules] = useState('')
   const [durationMin, setDurationMin] = useState(120)
+  const [prize1, setPrize1] = useState(0)
+  const [prize2, setPrize2] = useState(0)
+  const [prize3, setPrize3] = useState(0)
   const [problems, setProblems] = useState<Problem[]>([{ title: '', content: '', answer: '', points: 100 }])
+  const [contributors, setContributors] = useState<Contributor[]>([])
+  const [contribQuery, setContribQuery] = useState('')
+  const [contribRole, setContribRole] = useState<'CONTRIBUTOR' | 'REVIEWER'>('CONTRIBUTOR')
   const [loading, setLoading] = useState(false)
 
   const labels = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'
@@ -38,7 +45,7 @@ export default function NewContestPage() {
       const res = await fetch('/api/contests', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ title, description, rules, durationMin, problems }),
+        body: JSON.stringify({ title, description, rules, durationMin, problems, prize1, prize2, prize3, contributors }),
       })
       if (!res.ok) { toast.error((await res.json()).error ?? '오류 발생'); return }
       const contest = await res.json()
@@ -79,6 +86,70 @@ export default function NewContestPage() {
           <label className="block text-xs font-medium text-text-secondary mb-1.5">제한 시간 (분)</label>
           <input type="number" min={10} max={480} value={durationMin} onChange={(e) => setDurationMin(Number(e.target.value))}
             className="w-40 bg-background border border-border rounded-lg px-3 py-2 text-sm text-text-primary focus:outline-none focus:border-accent" />
+        </div>
+        <div>
+          <label className="block text-xs font-medium text-text-secondary mb-1.5">우승 포인트 (선택)</label>
+          <div className="flex items-center gap-2">
+            {[
+              { label: '🥇 1등', value: prize1, set: setPrize1 },
+              { label: '🥈 2등', value: prize2, set: setPrize2 },
+              { label: '🥉 3등', value: prize3, set: setPrize3 },
+            ].map(({ label, value, set }) => (
+              <div key={label} className="flex items-center gap-1.5">
+                <span className="text-xs text-text-secondary whitespace-nowrap">{label}</span>
+                <input type="number" min={0} value={value} onChange={(e) => set(Number(e.target.value))}
+                  className="w-20 bg-background border border-border rounded-lg px-2 py-1.5 text-sm text-text-primary focus:outline-none focus:border-accent" />
+                <span className="text-xs text-muted">pt</span>
+              </div>
+            ))}
+          </div>
+          <p className="text-xs text-muted mt-1">0으로 설정 시 포인트 미지급</p>
+        </div>
+
+        {/* Contributors */}
+        <div>
+          <label className="block text-xs font-medium text-text-secondary mb-1.5">출제자 / 검토자 추가 (선택)</label>
+          <div className="flex gap-2 mb-2">
+            <input
+              value={contribQuery}
+              onChange={(e) => setContribQuery(e.target.value)}
+              placeholder="이메일 또는 닉네임"
+              className="flex-1 bg-background border border-border rounded-lg px-3 py-1.5 text-sm text-text-primary focus:outline-none focus:border-accent"
+            />
+            <select
+              value={contribRole}
+              onChange={(e) => setContribRole(e.target.value as 'CONTRIBUTOR' | 'REVIEWER')}
+              className="bg-background border border-border rounded-lg px-2 py-1.5 text-sm text-text-primary focus:outline-none focus:border-accent"
+            >
+              <option value="CONTRIBUTOR">출제자</option>
+              <option value="REVIEWER">검토자</option>
+            </select>
+            <button
+              type="button"
+              onClick={() => {
+                if (!contribQuery.trim()) return
+                if (contributors.find((c) => c.query === contribQuery.trim())) { toast.error('이미 추가된 사용자입니다'); return }
+                setContributors((prev) => [...prev, { query: contribQuery.trim(), role: contribRole }])
+                setContribQuery('')
+              }}
+              className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg border border-border text-xs text-text-secondary hover:text-text-primary hover:border-border-2 transition-colors"
+            >
+              <UserPlus size={13} /> 추가
+            </button>
+          </div>
+          {contributors.length > 0 && (
+            <div className="flex flex-wrap gap-2">
+              {contributors.map((c, i) => (
+                <span key={i} className="flex items-center gap-1.5 px-2.5 py-1 bg-surface-2 border border-border rounded-full text-xs text-text-secondary">
+                  <span className="text-accent font-medium">{c.role === 'CONTRIBUTOR' ? '출제' : '검토'}</span>
+                  {c.query}
+                  <button onClick={() => setContributors((prev) => prev.filter((_, idx) => idx !== i))} className="text-muted hover:text-red-400 transition-colors">
+                    <X size={11} />
+                  </button>
+                </span>
+              ))}
+            </div>
+          )}
         </div>
       </div>
 

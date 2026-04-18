@@ -28,6 +28,7 @@ export function Header() {
           {[
             { href: '/feed', label: '피드' },
             { href: '/subjects', label: '과목별' },
+            { href: '/problems', label: '문제' },
             { href: '/leaderboard', label: '랭킹' },
             { href: '/contests', label: '대회' },
             { href: '/groups', label: '그룹' },

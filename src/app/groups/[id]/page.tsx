@@ -6,7 +6,7 @@ import Link from 'next/link'
 import { Avatar } from '@/components/ui/Avatar'
 import { TierBadge } from '@/components/ui/TierBadge'
 import { timeAgo } from '@/lib/utils'
-import { MessageSquare, Trophy, FileText, Settings, UserMinus, UserPlus, Camera } from 'lucide-react'
+import { MessageSquare, Trophy, FileText, Settings, UserMinus, UserPlus, Camera, Mail, X } from 'lucide-react'
 import toast from 'react-hot-toast'
 
 interface Member { id: string; role: string; joinedAt: string; user: { id: string; name?: string | null; image?: string | null; points: number } }
@@ -28,6 +28,9 @@ export default function GroupPage() {
   const [editing, setEditing] = useState(false)
   const [desc, setDesc] = useState('')
   const [uploading, setUploading] = useState(false)
+  const [showInvite, setShowInvite] = useState(false)
+  const [inviteEmail, setInviteEmail] = useState('')
+  const [inviteLoading, setInviteLoading] = useState(false)
 
   async function load() {
     const res = await fetch(`/api/groups/${id}`)
@@ -67,6 +70,19 @@ export default function GroupPage() {
     setEditing(false); load()
   }
 
+  async function handleInvite() {
+    if (!inviteEmail.trim()) return
+    setInviteLoading(true)
+    try {
+      const res = await fetch(`/api/groups/${id}/invite`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: inviteEmail.trim() }),
+      })
+      if (res.ok) { toast.success('초대를 보냈습니다'); setInviteEmail(''); setShowInvite(false) }
+      else toast.error((await res.json()).error)
+    } finally { setInviteLoading(false) }
+  }
+
   async function handleDelete() {
     if (!confirm('그룹을 삭제하시겠습니까? 모든 게시글과 채팅이 삭제됩니다.')) return
     const res = await fetch(`/api/groups/${id}`, { method: 'DELETE' })
@@ -78,12 +94,34 @@ export default function GroupPage() {
   if (!group) return <div className="max-w-4xl mx-auto px-4 py-16 text-center text-text-secondary">그룹을 찾을 수 없습니다</div>
 
   const isOwner = session?.user?.id === group.ownerId
+  // Invite modal
   const isAdmin = session?.user?.role === 'ADMIN'
   const isMod = group.myMembership?.role === 'ADMIN' || isOwner || isAdmin
   const isMember = !!group.myMembership
 
   return (
     <div className="max-w-4xl mx-auto px-4 py-8 space-y-6">
+      {/* Invite modal */}
+      {showInvite && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50">
+          <div className="bg-surface border border-border rounded-2xl p-6 w-full max-w-sm space-y-4">
+            <div className="flex items-center justify-between">
+              <h3 className="text-sm font-semibold text-text-primary">이메일로 초대</h3>
+              <button onClick={() => setShowInvite(false)}><X size={16} className="text-muted" /></button>
+            </div>
+            <input
+              type="email" value={inviteEmail} onChange={(e) => setInviteEmail(e.target.value)}
+              onKeyDown={(e) => e.key === 'Enter' && handleInvite()}
+              placeholder="초대할 이메일 주소"
+              className="w-full bg-background border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-accent"
+            />
+            <button onClick={handleInvite} disabled={inviteLoading || !inviteEmail.trim()}
+              className="w-full py-2 rounded-lg bg-accent text-white text-sm font-semibold hover:bg-accent-dim transition-colors disabled:opacity-50">
+              {inviteLoading ? '전송 중...' : '초대 보내기'}
+            </button>
+          </div>
+        </div>
+      )}
       {/* Banner / Header */}
       <div className="bg-surface border border-border rounded-2xl p-6">
         <div className="flex items-start gap-4">
@@ -107,7 +145,13 @@ export default function GroupPage() {
           <div className="flex-1 min-w-0">
             <div className="flex items-start justify-between gap-2">
               <h1 className="text-2xl font-bold text-text-primary">{group.name}</h1>
-              <div className="flex gap-1.5 shrink-0">
+              <div className="flex gap-1.5 shrink-0 flex-wrap">
+                {isMod && (
+                  <button onClick={() => setShowInvite(true)}
+                    className="flex items-center gap-1 px-3 py-1.5 rounded-lg border border-border text-xs text-text-secondary hover:text-accent hover:border-accent/40 transition-colors">
+                    <Mail size={13} /> 초대
+                  </button>
+                )}
                 {isMember ? (
                   !isOwner && (
                     <button onClick={handleLeave}

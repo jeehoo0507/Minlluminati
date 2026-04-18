@@ -24,9 +24,21 @@ export async function POST(req: NextRequest) {
   const isOrganizer = await prisma.contestOrganizer.findUnique({ where: { userId: session.user.id } })
   if (!isAdmin && !isOrganizer) return NextResponse.json({ error: '대회 개설 권한이 없습니다' }, { status: 403 })
 
-  const { title, description, rules, durationMin, problems } = await req.json()
+  const { title, description, rules, durationMin, problems, prize1, prize2, prize3, contributors } = await req.json()
   if (!title?.trim()) return NextResponse.json({ error: '대회명을 입력해주세요' }, { status: 400 })
   if (!problems?.length) return NextResponse.json({ error: '문제를 1개 이상 추가해주세요' }, { status: 400 })
+
+  // Resolve contributor user IDs from email or name
+  const resolvedContributors: { userId: string; role: string }[] = []
+  if (Array.isArray(contributors)) {
+    for (const c of contributors) {
+      const u = await prisma.user.findFirst({
+        where: { OR: [{ email: c.query }, { name: c.query }] },
+        select: { id: true },
+      })
+      if (u) resolvedContributors.push({ userId: u.id, role: c.role })
+    }
+  }
 
   const labels = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'
   const contest = await prisma.contest.create({
@@ -35,6 +47,9 @@ export async function POST(req: NextRequest) {
       description: description?.trim() ?? '',
       rules: rules?.trim() ?? '',
       durationMin: durationMin ?? 120,
+      prize1: prize1 ? Number(prize1) : null,
+      prize2: prize2 ? Number(prize2) : null,
+      prize3: prize3 ? Number(prize3) : null,
       organizerId: session.user.id,
       status: isAdmin ? 'APPROVED' : 'PENDING',
       problems: {
@@ -47,6 +62,9 @@ export async function POST(req: NextRequest) {
           order: i,
         })),
       },
+      ...(resolvedContributors.length > 0 ? {
+        contributors: { create: resolvedContributors },
+      } : {}),
     },
     include: { problems: true },
   })

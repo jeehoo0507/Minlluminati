@@ -5,12 +5,13 @@ import { useSession } from 'next-auth/react'
 import Link from 'next/link'
 import { Avatar } from '@/components/ui/Avatar'
 import { TierBadge } from '@/components/ui/TierBadge'
-import { ArrowLeft, Send } from 'lucide-react'
+import { ArrowLeft, Send, ImageIcon } from 'lucide-react'
 import toast from 'react-hot-toast'
 
 interface Message {
   id: string
   content: string
+  imageUrl?: string | null
   createdAt: string
   author: { id: string; name?: string | null; image?: string | null; points: number }
 }
@@ -22,8 +23,11 @@ export default function GroupChatPage() {
   const [isMember, setIsMember] = useState(false)
   const [input, setInput] = useState('')
   const [sending, setSending] = useState(false)
+  const [imgUploading, setImgUploading] = useState(false)
   const bottomRef = useRef<HTMLDivElement>(null)
   const lastTimestampRef = useRef<string | null>(null)
+  const isPollingRef = useRef(false)
+  const imageRef = useRef<HTMLInputElement>(null)
 
   async function loadInitial() {
     const [msgRes, groupRes] = await Promise.all([
@@ -42,31 +46,29 @@ export default function GroupChatPage() {
   }
 
   async function poll() {
+    if (isPollingRef.current) return
     const after = lastTimestampRef.current
-    const url = after
-      ? `/api/groups/${id}/messages?after=${encodeURIComponent(after)}`
-      : `/api/groups/${id}/messages`
-    const res = await fetch(url)
-    if (!res.ok) return
-    const newMsgs: Message[] = await res.json()
-    if (newMsgs.length > 0) {
-      lastTimestampRef.current = newMsgs[newMsgs.length - 1].createdAt
-      setMessages((prev) => [...prev, ...newMsgs])
+    if (!after) return
+    isPollingRef.current = true
+    try {
+      const res = await fetch(`/api/groups/${id}/messages?after=${encodeURIComponent(after)}`)
+      if (!res.ok) return
+      const newMsgs: Message[] = await res.json()
+      if (newMsgs.length > 0) {
+        lastTimestampRef.current = newMsgs[newMsgs.length - 1].createdAt
+        setMessages((prev) => [...prev, ...newMsgs])
+      }
+    } finally {
+      isPollingRef.current = false
     }
   }
 
-  useEffect(() => {
-    loadInitial()
-  }, [id, session])
-
+  useEffect(() => { loadInitial() }, [id, session])
   useEffect(() => {
     const interval = setInterval(poll, 3000)
     return () => clearInterval(interval)
   }, [id])
-
-  useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
-  }, [messages])
+  useEffect(() => { bottomRef.current?.scrollIntoView({ behavior: 'smooth' }) }, [messages])
 
   async function handleSend() {
     if (!input.trim()) return
@@ -78,13 +80,38 @@ export default function GroupChatPage() {
         body: JSON.stringify({ content: input.trim() }),
       })
       if (res.ok) {
+        const msg: Message = await res.json()
         setInput('')
-        await poll()
+        setMessages((prev) => [...prev, msg])
+        lastTimestampRef.current = msg.createdAt
       } else {
         toast.error((await res.json()).error ?? '전송 실패')
       }
+    } finally { setSending(false) }
+  }
+
+  async function handleImageUpload(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0]
+    if (!file) return
+    setImgUploading(true)
+    try {
+      const fd = new FormData(); fd.append('file', file)
+      const up = await fetch('/api/upload', { method: 'POST', body: fd })
+      if (!up.ok) { toast.error('업로드 실패'); return }
+      const { url } = await up.json()
+      const res = await fetch(`/api/groups/${id}/messages`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ content: '', imageUrl: url }),
+      })
+      if (res.ok) {
+        const msg: Message = await res.json()
+        setMessages((prev) => [...prev, msg])
+        lastTimestampRef.current = msg.createdAt
+      }
     } finally {
-      setSending(false)
+      setImgUploading(false)
+      if (imageRef.current) imageRef.current.value = ''
     }
   }
 
@@ -94,6 +121,21 @@ export default function GroupChatPage() {
 
   function formatTime(iso: string) {
     return new Date(iso).toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' })
+  }
+
+  function renderContent(text: string) {
+    const parts = text.split(/(#\d+)/)
+    return parts.map((part, i) => {
+      const match = part.match(/^#(\d+)$/)
+      if (match) {
+        return (
+          <Link key={i} href={`/problems/${match[1]}`} className="underline font-medium hover:opacity-80">
+            {part}
+          </Link>
+        )
+      }
+      return <span key={i}>{part}</span>
+    })
   }
 
   return (
@@ -121,9 +163,15 @@ export default function GroupChatPage() {
                     <TierBadge points={m.author.points} />
                   </div>
                 )}
-                <div className={`px-3 py-2 rounded-2xl text-sm break-words ${isMe ? 'bg-accent text-white rounded-tr-sm' : 'bg-surface-2 text-text-primary rounded-tl-sm'}`}>
-                  {m.content}
-                </div>
+                {m.imageUrl && (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img src={m.imageUrl} alt="image" className="max-w-full rounded-xl max-h-64 object-contain border border-border" />
+                )}
+                {m.content && (
+                  <div className={`px-3 py-2 rounded-2xl text-sm break-words ${isMe ? 'bg-accent text-white rounded-tr-sm' : 'bg-surface-2 text-text-primary rounded-tl-sm'}`}>
+                    {renderContent(m.content)}
+                  </div>
+                )}
                 <span className="text-xs text-muted">{formatTime(m.createdAt)}</span>
               </div>
             </div>
@@ -133,7 +181,16 @@ export default function GroupChatPage() {
       </div>
 
       {isMember ? (
-        <div className="mt-3 flex gap-2 shrink-0">
+        <div className="mt-3 flex gap-2 shrink-0 items-end">
+          <button
+            onClick={() => imageRef.current?.click()}
+            disabled={imgUploading}
+            className="p-2.5 rounded-xl border border-border text-text-secondary hover:text-accent hover:border-accent/40 transition-colors disabled:opacity-50"
+            title="이미지 전송"
+          >
+            <ImageIcon size={16} />
+          </button>
+          <input ref={imageRef} type="file" accept="image/*" className="hidden" onChange={handleImageUpload} />
           <textarea
             value={input}
             onChange={(e) => setInput(e.target.value)}

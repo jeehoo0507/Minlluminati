@@ -55,8 +55,12 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: '제목, 내용, 과목은 필수입니다' }, { status: 400 })
   }
 
+  const maxResult = await prisma.post.aggregate({ _max: { postNumber: true } })
+  const nextNumber = (maxResult._max.postNumber ?? 0) + 1
+
   const post = await prisma.post.create({
     data: {
+      postNumber: nextNumber,
       title: title.trim(),
       content: content.trim(),
       subject,

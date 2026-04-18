@@ -6,15 +6,17 @@ import { Avatar } from '@/components/ui/Avatar'
 import { TierBadge } from '@/components/ui/TierBadge'
 import { AdminConfirmModal } from '@/components/ui/AdminConfirmModal'
 import { timeAgo } from '@/lib/utils'
-import { UserPlus, Trash2, Shield, ShieldOff, CheckCircle, XCircle, Swords, Pencil } from 'lucide-react'
+import { UserPlus, Trash2, Shield, ShieldOff, CheckCircle, XCircle, Swords, Pencil, RotateCcw, Sliders, Bell } from 'lucide-react'
 import toast from 'react-hot-toast'
+import { TIERS } from '@/lib/scoring'
 
 interface AdminUser {
   id: string; email: string; name?: string | null; image?: string | null; role: string; points: number; createdAt: string
 }
 interface PendingContest {
   id: string; title: string; createdAt: string
-  organizer: { user: { id: string; name?: string | null } }
+  prize1?: number | null; prize2?: number | null; prize3?: number | null
+  organizer: { id: string; name?: string | null }
 }
 interface OrganizerRecord {
   id: string; userId: string
@@ -27,6 +29,9 @@ interface AnyPost {
 interface AnyContest {
   id: string; title: string; status: string; createdAt: string
 }
+interface PermReq {
+  id: string; email: string; name?: string | null; message?: string | null; createdAt: string
+}
 
 type ConfirmAction = { title: string; description?: string; onConfirm: (pw: string) => Promise<void> } | null
 
@@ -38,7 +43,7 @@ export default function AdminPage() {
   const [contests, setContests] = useState<AnyContest[]>([])
   const [inviteEmail, setInviteEmail] = useState('')
   const [loading, setLoading] = useState(false)
-  const [tab, setTab] = useState<'users' | 'invite' | 'contests' | 'organizers' | 'posts' | 'allcontests'>('users')
+  const [tab, setTab] = useState<'users' | 'invite' | 'contests' | 'organizers' | 'posts' | 'allcontests' | 'reset' | 'tiers' | 'requests'>('users')
   const [pendingContests, setPendingContests] = useState<PendingContest[]>([])
   const [organizers, setOrganizers] = useState<OrganizerRecord[]>([])
   const [orgEmail, setOrgEmail] = useState('')
@@ -46,6 +51,11 @@ export default function AdminPage() {
   const [editPoints, setEditPoints] = useState<{ userId: string; current: number } | null>(null)
   const [newPoints, setNewPoints] = useState('')
   const [confirmAction, setConfirmAction] = useState<ConfirmAction>(null)
+  const [permRequests, setPermRequests] = useState<PermReq[]>([])
+  const [tierConfig, setTierConfig] = useState(TIERS.map(t => ({ ...t })))
+  const [tierSaving, setTierSaving] = useState(false)
+  const [contestPrizes, setContestPrizes] = useState<Record<string, { p1: number; p2: number; p3: number }>>({})
+  const [editingContestPrize, setEditingContestPrize] = useState<string | null>(null)
 
   useEffect(() => {
     if (status === 'loading') return
@@ -56,7 +66,6 @@ export default function AdminPage() {
   async function loadAll() {
     loadUsers(); loadPendingContests(); loadOrganizers()
   }
-
   async function loadUsers() {
     const res = await fetch('/api/admin/users')
     if (res.ok) setUsers(await res.json())
@@ -76,6 +85,14 @@ export default function AdminPage() {
   async function loadContests() {
     const res = await fetch('/api/contests')
     if (res.ok) { const d = await res.json(); setContests(d ?? []) }
+  }
+  async function loadPermRequests() {
+    const res = await fetch('/api/admin/permission-requests')
+    if (res.ok) setPermRequests(await res.json())
+  }
+  async function loadTierConfig() {
+    const res = await fetch('/api/admin/config')
+    if (res.ok) setTierConfig(await res.json())
   }
 
   async function invite() {
@@ -184,10 +201,35 @@ export default function AdminPage() {
     })
   }
 
+  function confirmDataReset(scope: 'points' | 'all') {
+    const isAll = scope === 'all'
+    setConfirmAction({
+      title: isAll ? '전체 데이터 초기화' : '포인트 초기화',
+      description: isAll
+        ? '⚠️ 모든 포인트, 게시글, 댓글, 추천이 삭제됩니다. 되돌릴 수 없습니다.'
+        : '모든 유저의 포인트를 0으로 리셋합니다.',
+      onConfirm: async (pw) => {
+        const res = await fetch('/api/admin/reset', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ adminPassword: pw, scope }),
+        })
+        const data = await res.json()
+        if (!res.ok) throw new Error(data.error)
+        toast.success('초기화 완료')
+        setConfirmAction(null)
+        loadUsers()
+      },
+    })
+  }
+
   async function reviewContest(contestId: string, action: 'APPROVED' | 'REJECTED') {
+    const prizes = contestPrizes[contestId]
     const res = await fetch('/api/admin/contests', {
       method: 'PATCH', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ contestId, action }),
+      body: JSON.stringify({
+        contestId, action,
+        ...(prizes ? { prize1: prizes.p1, prize2: prizes.p2, prize3: prizes.p3 } : {}),
+      }),
     })
     if (res.ok) {
       toast.success(action === 'APPROVED' ? '승인되었습니다' : '거절되었습니다')
@@ -217,15 +259,41 @@ export default function AdminPage() {
     else toast.error('처리 실패')
   }
 
+  async function handlePermRequest(id: string, action: 'approve' | 'reject') {
+    const res = await fetch('/api/admin/permission-requests', {
+      method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id, action }),
+    })
+    if (res.ok) {
+      toast.success(action === 'approve' ? '승인 완료 (이메일 초대 등록됨)' : '거절 완료')
+      setPermRequests((p) => p.filter((r) => r.id !== id))
+    }
+  }
+
+  async function saveTiers() {
+    setTierSaving(true)
+    try {
+      const res = await fetch('/api/admin/config', {
+        method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ tiers: tierConfig }),
+      })
+      if (res.ok) toast.success('티어 설정 저장 완료')
+      else toast.error('저장 실패')
+    } finally { setTierSaving(false) }
+  }
+
   if (status === 'loading' || session?.user?.role !== 'ADMIN') return null
 
   const TABS = [
     { key: 'users', label: `유저 목록 (${users.length})` },
-    { key: 'invite', label: '이메일 초대' },
+    { key: 'invite', label: `이메일 초대${permRequests.length > 0 ? ` (${permRequests.length})` : ''}` },
+    { key: 'requests', label: `권한 요청${permRequests.length > 0 ? ` (${permRequests.length})` : ''}` },
     { key: 'contests', label: `대회 검토${pendingContests.length > 0 ? ` (${pendingContests.length})` : ''}` },
     { key: 'organizers', label: '대회 권한' },
     { key: 'posts', label: '게시글 관리' },
     { key: 'allcontests', label: '대회 관리' },
+    { key: 'tiers', label: '티어 설정' },
+    { key: 'reset', label: '⚠️ 초기화' },
   ] as const
 
   return (
@@ -247,7 +315,7 @@ export default function AdminPage() {
       </div>
 
       {/* Tabs */}
-      <div className="flex flex-wrap gap-1 p-1 bg-surface rounded-xl border border-border w-fit">
+      <div className="flex flex-wrap gap-1 p-1 bg-surface rounded-xl border border-border">
         {TABS.map(({ key, label }) => (
           <button
             key={key}
@@ -255,8 +323,10 @@ export default function AdminPage() {
               setTab(key)
               if (key === 'posts' && posts.length === 0) loadPosts()
               if (key === 'allcontests' && contests.length === 0) loadContests()
+              if (key === 'requests') loadPermRequests()
+              if (key === 'tiers') loadTierConfig()
             }}
-            className={`px-4 py-1.5 rounded-lg text-sm font-medium transition-colors ${tab === key ? 'bg-accent text-background' : 'text-text-secondary hover:text-text-primary'}`}
+            className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${tab === key ? 'bg-accent text-background' : 'text-text-secondary hover:text-text-primary'}`}
           >
             {label}
           </button>
@@ -279,32 +349,37 @@ export default function AdminPage() {
         </div>
       )}
 
-      {/* Contest review */}
-      {tab === 'contests' && (
+      {/* Permission requests */}
+      {tab === 'requests' && (
         <div className="bg-surface border border-border rounded-2xl overflow-hidden">
-          {pendingContests.length === 0 ? (
-            <div className="text-center py-12 text-text-secondary text-sm">검토 대기 중인 대회가 없습니다</div>
+          <div className="px-4 py-3 border-b border-border bg-surface-2">
+            <h2 className="text-sm font-semibold text-text-primary flex items-center gap-2"><Bell size={14} /> 권한 요청</h2>
+          </div>
+          {permRequests.length === 0 ? (
+            <div className="text-center py-12 text-text-secondary text-sm">대기 중인 권한 요청이 없습니다</div>
           ) : (
             <table className="w-full text-sm">
-              <thead><tr className="border-b border-border bg-surface-2">
-                <th className="text-left px-4 py-3 text-xs font-semibold text-text-secondary">대회명</th>
-                <th className="text-left px-4 py-3 text-xs font-semibold text-text-secondary">주최자</th>
-                <th className="text-left px-4 py-3 text-xs font-semibold text-text-secondary hidden md:table-cell">신청일</th>
+              <thead><tr className="border-b border-border">
+                <th className="text-left px-4 py-3 text-xs font-semibold text-text-secondary">이메일</th>
+                <th className="text-left px-4 py-3 text-xs font-semibold text-text-secondary hidden md:table-cell">이름</th>
+                <th className="text-left px-4 py-3 text-xs font-semibold text-text-secondary hidden lg:table-cell">메시지</th>
+                <th className="text-left px-4 py-3 text-xs font-semibold text-text-secondary hidden sm:table-cell">신청일</th>
                 <th className="text-right px-4 py-3 text-xs font-semibold text-text-secondary">액션</th>
               </tr></thead>
               <tbody>
-                {pendingContests.map((c) => (
-                  <tr key={c.id} className="border-b border-border last:border-0 hover:bg-surface-2 transition-colors">
-                    <td className="px-4 py-3 font-medium text-text-primary">{c.title}</td>
-                    <td className="px-4 py-3 text-text-secondary">{c.organizer?.user?.name ?? '?'}</td>
-                    <td className="px-4 py-3 text-muted text-xs hidden md:table-cell">{timeAgo(c.createdAt)}</td>
+                {permRequests.map((r) => (
+                  <tr key={r.id} className="border-b border-border last:border-0 hover:bg-surface-2 transition-colors">
+                    <td className="px-4 py-3 text-text-primary font-medium">{r.email}</td>
+                    <td className="px-4 py-3 text-text-secondary hidden md:table-cell">{r.name ?? '-'}</td>
+                    <td className="px-4 py-3 text-text-secondary text-xs hidden lg:table-cell max-w-[200px] truncate">{r.message ?? '-'}</td>
+                    <td className="px-4 py-3 text-muted text-xs hidden sm:table-cell">{timeAgo(r.createdAt)}</td>
                     <td className="px-4 py-3">
                       <div className="flex items-center justify-end gap-1">
-                        <button onClick={() => reviewContest(c.id, 'APPROVED')} className="flex items-center gap-1 px-2 py-1 rounded-lg text-xs text-emerald-600 hover:bg-emerald-50 transition-colors">
-                          <CheckCircle size={13} /> 승인
+                        <button onClick={() => handlePermRequest(r.id, 'approve')} className="flex items-center gap-1 px-2 py-1 rounded-lg text-xs text-emerald-600 hover:bg-emerald-50 transition-colors">
+                          <CheckCircle size={12} /> 승인
                         </button>
-                        <button onClick={() => reviewContest(c.id, 'REJECTED')} className="flex items-center gap-1 px-2 py-1 rounded-lg text-xs text-red-500 hover:bg-red-50 transition-colors">
-                          <XCircle size={13} /> 거절
+                        <button onClick={() => handlePermRequest(r.id, 'reject')} className="flex items-center gap-1 px-2 py-1 rounded-lg text-xs text-red-500 hover:bg-red-50 transition-colors">
+                          <XCircle size={12} /> 거절
                         </button>
                       </div>
                     </td>
@@ -312,6 +387,126 @@ export default function AdminPage() {
                 ))}
               </tbody>
             </table>
+          )}
+        </div>
+      )}
+
+      {/* Tier config */}
+      {tab === 'tiers' && (
+        <div className="bg-surface border border-border rounded-2xl p-6 space-y-4">
+          <h2 className="text-sm font-semibold text-text-primary flex items-center gap-2"><Sliders size={15} /> 티어 커트라인 설정</h2>
+          <p className="text-xs text-muted">변경 후 저장하면 다음 서버 재시작 시 적용됩니다 (현재는 DB에 저장됨)</p>
+          <div className="space-y-3">
+            {tierConfig.map((tier, i) => (
+              <div key={tier.name} className="flex items-center gap-3">
+                <span className="text-sm font-medium text-text-primary w-20"
+                  style={{ color: tier.color }}>
+                  {tier.name}
+                </span>
+                <div className="flex items-center gap-2 text-xs text-muted">
+                  <span>최소</span>
+                  <input type="number" min={0} value={tier.min}
+                    onChange={(e) => setTierConfig((p) => p.map((t, j) => j === i ? { ...t, min: Number(e.target.value) } : t))}
+                    className="w-24 bg-background border border-border rounded px-2 py-1 text-sm text-text-primary focus:outline-none focus:border-accent" />
+                  <span>pt ~</span>
+                  {i < tierConfig.length - 1 ? (
+                    <>
+                      <span>최대</span>
+                      <input type="number" min={0} value={tier.max === Infinity ? '' : tier.max}
+                        onChange={(e) => setTierConfig((p) => p.map((t, j) => j === i ? { ...t, max: e.target.value === '' ? Infinity : Number(e.target.value) } : t))}
+                        className="w-24 bg-background border border-border rounded px-2 py-1 text-sm text-text-primary focus:outline-none focus:border-accent" />
+                      <span>pt</span>
+                    </>
+                  ) : (
+                    <span>∞</span>
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
+          <button onClick={saveTiers} disabled={tierSaving}
+            className="px-4 py-2 rounded-lg bg-accent text-background text-sm font-semibold hover:bg-accent-dim transition-colors disabled:opacity-50">
+            {tierSaving ? '저장 중...' : '저장'}
+          </button>
+        </div>
+      )}
+
+      {/* Data reset */}
+      {tab === 'reset' && (
+        <div className="space-y-4">
+          <div className="bg-surface border border-border rounded-2xl p-6 space-y-4">
+            <h2 className="text-sm font-semibold text-text-primary flex items-center gap-2"><RotateCcw size={15} /> 포인트 초기화</h2>
+            <p className="text-xs text-text-secondary">모든 유저의 포인트를 0으로 리셋합니다. 포인트 히스토리도 초기화됩니다.</p>
+            <button onClick={() => confirmDataReset('points')}
+              className="px-4 py-2 rounded-lg border border-border text-sm text-text-secondary hover:text-text-primary hover:border-border-2 transition-colors">
+              포인트 초기화
+            </button>
+          </div>
+          <div className="bg-surface border border-red-200 rounded-2xl p-6 space-y-4">
+            <h2 className="text-sm font-semibold text-red-500 flex items-center gap-2"><RotateCcw size={15} /> 전체 데이터 초기화</h2>
+            <p className="text-xs text-text-secondary">⚠️ 모든 포인트, 게시글, 댓글, 추천, 제출 기록을 초기화합니다. 되돌릴 수 없습니다.</p>
+            <button onClick={() => confirmDataReset('all')}
+              className="px-4 py-2 rounded-lg bg-red-500 text-white text-sm font-semibold hover:bg-red-600 transition-colors">
+              전체 초기화 (위험)
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Contest review */}
+      {tab === 'contests' && (
+        <div className="bg-surface border border-border rounded-2xl overflow-hidden">
+          {pendingContests.length === 0 ? (
+            <div className="text-center py-12 text-text-secondary text-sm">검토 대기 중인 대회가 없습니다</div>
+          ) : (
+            <div className="divide-y divide-border">
+              {pendingContests.map((c) => {
+                const prizes = contestPrizes[c.id] ?? { p1: c.prize1 ?? 0, p2: c.prize2 ?? 0, p3: c.prize3 ?? 0 }
+                const isEditing = editingContestPrize === c.id
+                return (
+                  <div key={c.id} className="px-4 py-3 hover:bg-surface-2 transition-colors">
+                    <div className="flex items-start justify-between gap-2">
+                      <div>
+                        <p className="font-medium text-text-primary">{c.title}</p>
+                        <p className="text-xs text-muted mt-0.5">{c.organizer?.name ?? '?'} · {timeAgo(c.createdAt)}</p>
+                      </div>
+                      <div className="flex items-center gap-1 shrink-0">
+                        <button
+                          onClick={() => {
+                            setEditingContestPrize(isEditing ? null : c.id)
+                            if (!contestPrizes[c.id]) setContestPrizes((p) => ({ ...p, [c.id]: prizes }))
+                          }}
+                          className="flex items-center gap-1 px-2 py-1 rounded-lg text-xs text-text-secondary hover:text-text-primary hover:bg-surface border border-border transition-colors"
+                        >
+                          <Pencil size={11} /> 포인트 설정
+                        </button>
+                        <button onClick={() => reviewContest(c.id, 'APPROVED')} className="flex items-center gap-1 px-2 py-1 rounded-lg text-xs text-emerald-600 hover:bg-emerald-50 transition-colors">
+                          <CheckCircle size={13} /> 승인
+                        </button>
+                        <button onClick={() => reviewContest(c.id, 'REJECTED')} className="flex items-center gap-1 px-2 py-1 rounded-lg text-xs text-red-500 hover:bg-red-50 transition-colors">
+                          <XCircle size={13} /> 거절
+                        </button>
+                      </div>
+                    </div>
+                    {isEditing && (
+                      <div className="mt-2 flex items-center gap-2 flex-wrap">
+                        {([['🥇 1등', 'p1'], ['🥈 2등', 'p2'], ['🥉 3등', 'p3']] as const).map(([label, key]) => (
+                          <div key={key} className="flex items-center gap-1 text-xs text-text-secondary">
+                            <span>{label}</span>
+                            <input
+                              type="number" min={0} value={prizes[key]}
+                              onChange={(e) => setContestPrizes((p) => ({ ...p, [c.id]: { ...prizes, [key]: Number(e.target.value) } }))}
+                              className="w-20 bg-background border border-border rounded px-2 py-1 text-sm text-text-primary focus:outline-none focus:border-accent"
+                            />
+                            <span className="text-muted">pt</span>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )
+              })}
+            </div>
           )}
         </div>
       )}

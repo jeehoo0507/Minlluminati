@@ -1,5 +1,6 @@
 import type { Metadata } from 'next'
 import './globals.css'
+import { cookies } from 'next/headers'
 import { Providers } from './providers'
 import { Header } from '@/components/layout/Header'
 import { Toaster } from 'react-hot-toast'
@@ -10,11 +11,10 @@ export const metadata: Metadata = {
 }
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
+  const theme = cookies().get('theme')?.value ?? 'light'
+
   return (
-    <html lang="ko" suppressHydrationWarning>
-      <head>
-        <script dangerouslySetInnerHTML={{ __html: `(function(){var t=localStorage.getItem('theme')||'light';document.documentElement.classList.toggle('dark',t==='dark')})()` }} />
-      </head>
+    <html lang="ko" className={theme === 'dark' ? 'dark' : ''} suppressHydrationWarning>
       <body className="min-h-screen bg-background text-text-primary">
         <Providers>
           <Header />

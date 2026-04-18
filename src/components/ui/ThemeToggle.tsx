@@ -15,7 +15,7 @@ export function ThemeToggle() {
     const next = !dark
     setDark(next)
     document.documentElement.classList.toggle('dark', next)
-    localStorage.setItem('theme', next ? 'dark' : 'light')
+    document.cookie = `theme=${next ? 'dark' : 'light'};path=/;max-age=31536000;SameSite=Lax`
   }
 
   if (!mounted) return <div className="w-8 h-8" />

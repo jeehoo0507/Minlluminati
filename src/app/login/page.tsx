@@ -4,7 +4,7 @@ import { signIn } from 'next-auth/react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import toast from 'react-hot-toast'
 
-type Step = 'email' | 'password' | 'setup'
+type Step = 'email' | 'password' | 'setup' | 'request'
 
 function LoginForm() {
   const router = useRouter()
@@ -16,6 +16,7 @@ function LoginForm() {
   const [password, setPassword] = useState('')
   const [password2, setPassword2] = useState('')
   const [name, setName] = useState('')
+  const [reqMessage, setReqMessage] = useState('')
   const [loading, setLoading] = useState(false)
 
   async function handleEmailNext(e: React.FormEvent) {
@@ -30,7 +31,7 @@ function LoginForm() {
       })
       const { status } = await res.json()
       if (status === 'not_allowed') {
-        toast.error('등록되지 않은 이메일입니다. 관리자에게 문의하세요.')
+        setStep('request')
       } else if (status === 'needs_setup') {
         setStep('setup')
       } else {
@@ -135,6 +136,45 @@ function LoginForm() {
               이메일 변경
             </button>
           </form>
+        )}
+
+        {step === 'request' && (
+          <div className="space-y-4">
+            <div className="p-3 bg-yellow-50 border border-yellow-200 rounded text-sm text-yellow-800">
+              등록되지 않은 이메일입니다. 관리자에게 접근 권한을 요청할 수 있습니다.
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-text-primary mb-1.5">이름 (선택)</label>
+              <input type="text" value={name} onChange={(e) => setName(e.target.value)} placeholder="이름이나 닉네임"
+                className="w-full border border-border rounded px-3 py-2 text-sm focus:outline-none focus:border-accent" />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-text-primary mb-1.5">요청 메시지 (선택)</label>
+              <textarea value={reqMessage} onChange={(e) => setReqMessage(e.target.value)} rows={2}
+                placeholder="가입 목적이나 소속 등을 적어주세요"
+                className="w-full border border-border rounded px-3 py-2 text-sm focus:outline-none focus:border-accent resize-none" />
+            </div>
+            <button
+              type="button" disabled={loading}
+              onClick={async () => {
+                setLoading(true)
+                try {
+                  const res = await fetch('/api/permission-request', {
+                    method: 'POST', headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ email, name: name.trim(), message: reqMessage.trim() }),
+                  })
+                  if (res.ok) { toast.success('권한 요청이 전송되었습니다'); setStep('email') }
+                  else toast.error((await res.json()).error ?? '오류 발생')
+                } finally { setLoading(false) }
+              }}
+              className="w-full py-2 bg-accent text-white text-sm font-medium rounded hover:bg-accent-dim transition-colors disabled:opacity-50"
+            >
+              {loading ? '전송 중...' : '권한 요청 보내기'}
+            </button>
+            <button type="button" onClick={() => setStep('email')} className="w-full text-xs text-text-secondary hover:text-text-primary">
+              이메일 변경
+            </button>
+          </div>
         )}
 
         {step === 'setup' && (

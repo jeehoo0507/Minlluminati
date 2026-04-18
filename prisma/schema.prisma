@@ -37,6 +37,7 @@ model User {
   groupMemberships GroupMember[]
   groupPosts       GroupPost[]
   groupMessages    GroupMessage[]
+  sentInvites      GroupInvite[] @relation("SentInvites")
 
   // Rivals
   rivals   Rival[] @relation("UserRivals")
@@ -44,6 +45,14 @@ model User {
 
   // Point history
   pointHistory PointHistory[]
+
+  // Problems
+  problems         Problem[]           @relation("UserProblems")
+  problemSubs      ProblemSubmission[] @relation("UserProblemSubs")
+  problemSolutions ProblemSolution[]   @relation("UserProblemSols")
+  solutionComments SolutionComment[]   @relation("UserSolComments")
+  problemSets      ProblemSet[]        @relation("UserProblemSets")
+  contestContributions ContestContributor[] @relation("ContestContributors")
 
   @@map("users")
 }
@@ -59,6 +68,7 @@ model AllowedEmail {
 
 model Post {
   id            String    @id @default(cuid())
+  postNumber    Int?      @unique
   title         String
   content       String
   subject       String
@@ -106,19 +116,24 @@ model Comment {
 // ───────────────────────────── Contest ─────────────────────────────
 
 model Contest {
-  id          String   @id @default(cuid())
-  title       String
-  description String
-  rules       String   @default("")
-  status      String   @default("DRAFT") // DRAFT | PENDING | APPROVED | ONGOING | ENDED
-  startTime   DateTime?
-  durationMin Int      @default(120)
-  organizerId String
-  organizer   User     @relation("ContestOrganizer", fields: [organizerId], references: [id])
-  problems    ContestProblem[]
-  participants ContestParticipant[]
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  id            String   @id @default(cuid())
+  title         String
+  description   String
+  rules         String   @default("")
+  status        String   @default("DRAFT") // DRAFT | PENDING | APPROVED | ONGOING | ENDED
+  startTime     DateTime?
+  durationMin   Int      @default(120)
+  prize1        Int?
+  prize2        Int?
+  prize3        Int?
+  prizesAwarded Boolean  @default(false)
+  organizerId   String
+  organizer     User     @relation("ContestOrganizer", fields: [organizerId], references: [id])
+  problems      ContestProblem[]
+  participants  ContestParticipant[]
+  contributors  ContestContributor[]
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
 
   @@map("contests")
 }
@@ -188,6 +203,8 @@ model Group {
   members     GroupMember[]
   posts       GroupPost[]
   messages    GroupMessage[]
+  invites     GroupInvite[]
+  problemSets ProblemSet[]
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
@@ -226,11 +243,151 @@ model GroupMessage {
   groupId   String
   authorId  String
   content   String
+  imageUrl  String?
   group     Group    @relation(fields: [groupId], references: [id], onDelete: Cascade)
   author    User     @relation(fields: [authorId], references: [id], onDelete: Cascade)
   createdAt DateTime @default(now())
 
   @@map("group_messages")
+}
+
+model GroupInvite {
+  id           String   @id @default(cuid())
+  groupId      String
+  invitedEmail String
+  invitedBy    String
+  status       String   @default("PENDING") // PENDING | ACCEPTED | DECLINED
+  group        Group    @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  inviter      User     @relation("SentInvites", fields: [invitedBy], references: [id], onDelete: Cascade)
+  createdAt    DateTime @default(now())
+
+  @@unique([groupId, invitedEmail])
+  @@map("group_invites")
+}
+
+// ───────────────────────────── Problems ─────────────────────────────
+
+model Problem {
+  id            String   @id @default(cuid())
+  problemNumber Int      @unique
+  title         String
+  content       String
+  answer        String
+  imageUrls     String   @default("[]")
+  subject       String?
+  authorId      String
+  requestedPts  Int      @default(0)
+  approvedPts   Int?
+  status        String   @default("PENDING") // PENDING | APPROVED | REJECTED
+  contestId     String?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  author      User                @relation("UserProblems", fields: [authorId], references: [id], onDelete: Cascade)
+  submissions ProblemSubmission[]
+  solutions   ProblemSolution[]
+  setItems    ProblemSetItem[]
+
+  @@map("problems")
+}
+
+model ProblemSubmission {
+  id        String   @id @default(cuid())
+  problemId String
+  userId    String
+  answer    String
+  correct   Boolean  @default(false)
+  problem   Problem  @relation(fields: [problemId], references: [id], onDelete: Cascade)
+  user      User     @relation("UserProblemSubs", fields: [userId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+
+  @@unique([problemId, userId])
+  @@map("problem_submissions")
+}
+
+model ProblemSolution {
+  id        String            @id @default(cuid())
+  problemId String
+  authorId  String
+  content   String
+  imageUrls String            @default("[]")
+  problem   Problem           @relation(fields: [problemId], references: [id], onDelete: Cascade)
+  author    User              @relation("UserProblemSols", fields: [authorId], references: [id], onDelete: Cascade)
+  comments  SolutionComment[]
+  createdAt DateTime          @default(now())
+  updatedAt DateTime          @updatedAt
+
+  @@map("problem_solutions")
+}
+
+model SolutionComment {
+  id         String          @id @default(cuid())
+  solutionId String
+  authorId   String
+  content    String
+  solution   ProblemSolution @relation(fields: [solutionId], references: [id], onDelete: Cascade)
+  author     User            @relation("UserSolComments", fields: [authorId], references: [id], onDelete: Cascade)
+  createdAt  DateTime        @default(now())
+
+  @@map("solution_comments")
+}
+
+model ProblemSet {
+  id          String           @id @default(cuid())
+  title       String
+  description String           @default("")
+  isPublic    Boolean          @default(true)
+  authorId    String
+  groupId     String?
+  author      User             @relation("UserProblemSets", fields: [authorId], references: [id], onDelete: Cascade)
+  group       Group?           @relation(fields: [groupId], references: [id], onDelete: SetNull)
+  items       ProblemSetItem[]
+  createdAt   DateTime         @default(now())
+  updatedAt   DateTime         @updatedAt
+
+  @@map("problem_sets")
+}
+
+model ProblemSetItem {
+  id        String     @id @default(cuid())
+  setId     String
+  problemId String
+  order     Int        @default(0)
+  set       ProblemSet @relation(fields: [setId], references: [id], onDelete: Cascade)
+  problem   Problem    @relation(fields: [problemId], references: [id], onDelete: Cascade)
+
+  @@unique([setId, problemId])
+  @@map("problem_set_items")
+}
+
+model ContestContributor {
+  id        String  @id @default(cuid())
+  contestId String
+  userId    String
+  role      String  @default("CONTRIBUTOR") // CONTRIBUTOR | REVIEWER
+  contest   Contest @relation(fields: [contestId], references: [id], onDelete: Cascade)
+  user      User    @relation("ContestContributors", fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([contestId, userId])
+  @@map("contest_contributors")
+}
+
+model SystemConfig {
+  key   String @id
+  value String
+
+  @@map("system_config")
+}
+
+model PermissionRequest {
+  id        String   @id @default(cuid())
+  email     String   @unique
+  name      String?
+  message   String?
+  status    String   @default("PENDING") // PENDING | APPROVED | REJECTED
+  createdAt DateTime @default(now())
+
+  @@map("permission_requests")
 }
 
 // ───────────────────────────── NextAuth ─────────────────────────────

@@ -13,7 +13,7 @@ export async function GET(_: NextRequest, { params }: { params: { id: string } }
     where: { id: userId },
     select: {
       id: true, name: true, image: true, points: true, role: true, createdAt: true,
-      _count: { select: { posts: true, comments: true } },
+      _count: { select: { posts: { where: { deletedAt: null } }, comments: true } },
       posts: {
         where: { deletedAt: null },
         select: { id: true, subject: true, pointsAwarded: true, createdAt: true },

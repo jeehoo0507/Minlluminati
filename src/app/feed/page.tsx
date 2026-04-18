@@ -1,6 +1,6 @@
 'use client'
 import { useState, useEffect, useCallback } from 'react'
-import { Sidebar } from '@/components/layout/Sidebar'
+import { Sidebar, MobileSidebarButton } from '@/components/layout/Sidebar'
 import { PostCard } from '@/components/post/PostCard'
 import { useSession } from 'next-auth/react'
 import Link from 'next/link'
@@ -60,6 +60,7 @@ export default function FeedPage() {
       <div className="flex-1 min-w-0 space-y-4">
         {/* Search + Write */}
         <div className="flex items-center gap-2">
+          <MobileSidebarButton />
           <form onSubmit={handleSearch} className="flex-1 flex gap-2">
             <div className="relative flex-1">
               <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted" />

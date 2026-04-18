@@ -4,7 +4,8 @@ import Link from 'next/link'
 import { useSession } from 'next-auth/react'
 import { Avatar } from '@/components/ui/Avatar'
 import { timeAgo } from '@/lib/utils'
-import { Plus, Users, Lock, Globe } from 'lucide-react'
+import { Plus, Users, Lock, Globe, Bell, Check, X } from 'lucide-react'
+import toast from 'react-hot-toast'
 
 interface Group {
   id: string; name: string; description: string; isPublic: boolean; avatar?: string | null; createdAt: string
@@ -12,10 +13,17 @@ interface Group {
   _count: { members: number; posts: number }
 }
 
+interface Invite {
+  id: string; status: string; createdAt: string
+  group: { id: string; name: string; avatar?: string | null; isPublic: boolean; _count: { members: number } }
+  inviter: { id: string; name?: string | null }
+}
+
 export default function GroupsPage() {
   const { data: session } = useSession()
   const [groups, setGroups] = useState<Group[]>([])
   const [myGroupIds, setMyGroupIds] = useState<string[]>([])
+  const [invites, setInvites] = useState<Invite[]>([])
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
@@ -23,7 +31,27 @@ export default function GroupsPage() {
       setGroups(d.groups ?? [])
       setMyGroupIds(d.myGroupIds ?? [])
     }).finally(() => setLoading(false))
+    if (session?.user) {
+      fetch('/api/invites').then((r) => r.json()).then(setInvites)
+    }
   }, [session])
+
+  async function respondInvite(inviteId: string, action: 'accept' | 'decline') {
+    const res = await fetch('/api/invites', {
+      method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ inviteId, action }),
+    })
+    if (res.ok) {
+      toast.success(action === 'accept' ? '그룹에 가입했습니다!' : '초대를 거절했습니다')
+      setInvites((p) => p.filter((i) => i.id !== inviteId))
+      if (action === 'accept') {
+        fetch('/api/groups').then((r) => r.json()).then((d) => {
+          setGroups(d.groups ?? [])
+          setMyGroupIds(d.myGroupIds ?? [])
+        })
+      }
+    }
+  }
 
   const myGroups = groups.filter((g) => myGroupIds.includes(g.id))
   const otherGroups = groups.filter((g) => !myGroupIds.includes(g.id))
@@ -41,6 +69,45 @@ export default function GroupsPage() {
           </Link>
         )}
       </div>
+
+      {/* Pending invites */}
+      {invites.length > 0 && (
+        <section>
+          <h2 className="text-sm font-semibold text-text-secondary mb-3 flex items-center gap-1.5">
+            <Bell size={13} className="text-accent" /> 초대받은 그룹 ({invites.length})
+          </h2>
+          <div className="space-y-2">
+            {invites.map((inv) => (
+              <div key={inv.id} className="flex items-center justify-between p-3 bg-surface border border-accent/20 rounded-xl">
+                <div className="flex items-center gap-3">
+                  {inv.group.avatar ? (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img src={inv.group.avatar} alt={inv.group.name} className="w-10 h-10 rounded-lg object-cover border border-border" />
+                  ) : (
+                    <div className="w-10 h-10 rounded-lg bg-accent/10 flex items-center justify-center text-accent font-bold">
+                      {inv.group.name[0].toUpperCase()}
+                    </div>
+                  )}
+                  <div>
+                    <p className="text-sm font-semibold text-text-primary">{inv.group.name}</p>
+                    <p className="text-xs text-muted">{inv.inviter.name}님이 초대 · {inv.group._count.members}명 · {timeAgo(inv.createdAt)}</p>
+                  </div>
+                </div>
+                <div className="flex gap-1.5">
+                  <button onClick={() => respondInvite(inv.id, 'accept')}
+                    className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-accent text-white text-xs font-semibold hover:bg-accent-dim transition-colors">
+                    <Check size={12} /> 수락
+                  </button>
+                  <button onClick={() => respondInvite(inv.id, 'decline')}
+                    className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg border border-border text-xs text-text-secondary hover:text-red-400 hover:border-red-300 transition-colors">
+                    <X size={12} /> 거절
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        </section>
+      )}
 
       {loading ? (
         <div className="space-y-3">{Array.from({ length: 4 }).map((_, i) => <div key={i} className="h-24 bg-surface border border-border rounded-xl animate-pulse" />)}</div>
