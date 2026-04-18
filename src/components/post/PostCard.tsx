@@ -29,7 +29,14 @@ const TYPE_LABELS: Record<string, { label: string; color: string }> = {
 export function PostCard({ post }: PostCardProps) {
   const subjectInfo = SUBJECTS[post.subject as SubjectKey]
   const typeInfo = TYPE_LABELS[post.type] ?? TYPE_LABELS.FREE
-  const preview = post.content.replace(/\$\$[\s\S]*?\$\$/g, '[수식]').replace(/\$[^$]*\$/g, '[수식]').replace(/[#*`>]/g, '').slice(0, 120)
+  const preview = post.content
+    .replace(/!\[.*?\]\(.*?\)/g, '')
+    .replace(/\$\$[\s\S]*?\$\$/g, '[수식]')
+    .replace(/\$[^$]*\$/g, '[수식]')
+    .replace(/[#*`>]/g, '')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .slice(0, 120)
 
   return (
     <Link href={`/post/${post.id}`} className="block group">
