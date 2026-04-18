@@ -6,11 +6,18 @@ import Link from 'next/link'
 import { Avatar } from '@/components/ui/Avatar'
 import { TierBadge } from '@/components/ui/TierBadge'
 import { StreakChart } from '@/components/ui/StreakChart'
-import { Camera, UserMinus } from 'lucide-react'
+import { PointLineChart } from '@/components/ui/PointLineChart'
+import { RadarChart } from '@/components/ui/RadarChart'
+import { Camera, UserMinus, Lock } from 'lucide-react'
 import { getTier } from '@/lib/scoring'
 import toast from 'react-hot-toast'
 
 interface RivalUser { id: string; name?: string | null; image?: string | null; points: number }
+interface ProfileData {
+  streakMap: Record<string, number>
+  pointTimeline: { month: string; points: number }[]
+  radarData: { label: string; value: number }[]
+}
 
 export default function ProfilePage() {
   const { data: session, update } = useSession()
@@ -21,30 +28,29 @@ export default function ProfilePage() {
   const [image, setImage] = useState<string | null>(null)
   const [previewUrl, setPreviewUrl] = useState<string | null>(null)
   const [uploading, setUploading] = useState(false)
-  const [loading, setLoading] = useState(false)
-  const [streakMap, setStreakMap] = useState<Record<string, number>>({})
+  const [saving, setSaving] = useState(false)
+  const [profileData, setProfileData] = useState<ProfileData | null>(null)
   const [rivals, setRivals] = useState<RivalUser[]>([])
+
+  // Password change
+  const [showPwChange, setShowPwChange] = useState(false)
+  const [currentPw, setCurrentPw] = useState('')
+  const [newPw, setNewPw] = useState('')
+  const [confirmPw, setConfirmPw] = useState('')
+  const [pwLoading, setPwLoading] = useState(false)
 
   useEffect(() => {
     if (!session?.user) return
     setName(session.user.name ?? '')
     setImage(session.user.image ?? null)
-    // Load my profile data for streak
-    fetch(`/api/users/${session.user.id}`)
-      .then((r) => r.json())
-      .then((d) => { if (d.streakMap) setStreakMap(d.streakMap) })
+    fetch(`/api/users/${session.user.id}`).then((r) => r.json()).then(setProfileData)
     fetch('/api/rivals').then((r) => r.json()).then(setRivals)
   }, [session])
 
-  if (!session?.user) {
-    router.replace('/login')
-    return null
-  }
+  if (!session?.user) { router.replace('/login'); return null }
 
   async function handleImageChange(e: React.ChangeEvent<HTMLInputElement>) {
-    const file = e.target.files?.[0]
-    if (!file) return
-    // Show preview immediately
+    const file = e.target.files?.[0]; if (!file) return
     const objectUrl = URL.createObjectURL(file)
     setPreviewUrl(objectUrl)
     setUploading(true)
@@ -63,18 +69,36 @@ export default function ProfilePage() {
 
   async function handleSave() {
     if (!name.trim()) { toast.error('닉네임을 입력해주세요'); return }
-    setLoading(true)
+    setSaving(true)
     try {
       const res = await fetch('/api/profile', {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ name: name.trim(), image }),
       })
-      if (!res.ok) { toast.error((await res.json()).error ?? '오류 발생'); return }
+      if (!res.ok) { toast.error((await res.json()).error ?? '오류'); return }
       await update({ name: name.trim(), image })
       setPreviewUrl(null)
-      toast.success('프로필이 저장되었습니다')
-    } finally { setLoading(false) }
+      toast.success('프로필 저장')
+    } finally { setSaving(false) }
+  }
+
+  async function handlePasswordChange() {
+    if (!currentPw || !newPw || !confirmPw) { toast.error('모든 항목을 입력해주세요'); return }
+    if (newPw !== confirmPw) { toast.error('새 비밀번호가 일치하지 않습니다'); return }
+    if (newPw.length < 6) { toast.error('6자 이상 입력해주세요'); return }
+    setPwLoading(true)
+    try {
+      const res = await fetch('/api/profile', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ currentPassword: currentPw, newPassword: newPw }),
+      })
+      if (!res.ok) { toast.error((await res.json()).error); return }
+      toast.success('비밀번호가 변경되었습니다')
+      setCurrentPw(''); setNewPw(''); setConfirmPw('')
+      setShowPwChange(false)
+    } finally { setPwLoading(false) }
   }
 
   async function removeRival(rivalId: string) {
@@ -94,9 +118,8 @@ export default function ProfilePage() {
     <div className="max-w-2xl mx-auto px-4 py-10 space-y-5">
       <h1 className="text-2xl font-bold text-text-primary">내 프로필</h1>
 
-      {/* Settings card */}
+      {/* Profile settings */}
       <div className="bg-surface border border-border rounded-2xl p-6 space-y-5">
-        {/* Avatar */}
         <div className="flex items-center gap-4">
           <div className="relative shrink-0">
             {displayImage ? (
@@ -105,11 +128,8 @@ export default function ProfilePage() {
             ) : (
               <Avatar name={name || session.user.name} image={null} size={80} />
             )}
-            <button
-              onClick={() => fileRef.current?.click()}
-              disabled={uploading}
-              className="absolute bottom-0 right-0 w-7 h-7 bg-accent text-white rounded-full flex items-center justify-center hover:bg-accent-dim transition-colors shadow"
-            >
+            <button onClick={() => fileRef.current?.click()} disabled={uploading}
+              className="absolute bottom-0 right-0 w-7 h-7 bg-accent text-white rounded-full flex items-center justify-center hover:bg-accent-dim transition-colors shadow">
               <Camera size={13} />
             </button>
             <input ref={fileRef} type="file" accept="image/*" className="hidden" onChange={handleImageChange} />
@@ -133,43 +153,64 @@ export default function ProfilePage() {
           </div>
           <div>
             <label className="block text-sm font-medium text-text-secondary mb-1.5">닉네임</label>
-            <input
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              maxLength={20}
-              placeholder="닉네임 입력"
-              className="w-full bg-surface border border-border rounded-lg px-3 py-2 text-sm text-text-primary focus:outline-none focus:border-accent"
-            />
+            <input value={name} onChange={(e) => setName(e.target.value)} maxLength={20} placeholder="닉네임"
+              className="w-full bg-surface border border-border rounded-lg px-3 py-2 text-sm text-text-primary focus:outline-none focus:border-accent" />
           </div>
         </div>
 
-        <button
-          onClick={handleSave}
-          disabled={loading || uploading}
-          className="w-full py-2.5 rounded-lg bg-accent text-white text-sm font-semibold hover:bg-accent-dim transition-colors disabled:opacity-50"
-        >
-          {loading ? '저장 중...' : '저장'}
+        <button onClick={handleSave} disabled={saving || uploading}
+          className="w-full py-2.5 rounded-lg bg-accent text-white text-sm font-semibold hover:bg-accent-dim transition-colors disabled:opacity-50">
+          {saving ? '저장 중...' : '저장'}
         </button>
+
+        {/* Password change */}
+        <div className="border-t border-border pt-4">
+          <button onClick={() => setShowPwChange(!showPwChange)}
+            className="flex items-center gap-1.5 text-sm text-text-secondary hover:text-text-primary transition-colors">
+            <Lock size={13} /> {showPwChange ? '비밀번호 변경 닫기' : '비밀번호 변경'}
+          </button>
+          {showPwChange && (
+            <div className="mt-3 space-y-2">
+              <input type="password" value={currentPw} onChange={(e) => setCurrentPw(e.target.value)} placeholder="현재 비밀번호"
+                className="w-full bg-surface border border-border rounded-lg px-3 py-2 text-sm text-text-primary focus:outline-none focus:border-accent" />
+              <input type="password" value={newPw} onChange={(e) => setNewPw(e.target.value)} placeholder="새 비밀번호 (6자 이상)"
+                className="w-full bg-surface border border-border rounded-lg px-3 py-2 text-sm text-text-primary focus:outline-none focus:border-accent" />
+              <input type="password" value={confirmPw} onChange={(e) => setConfirmPw(e.target.value)} placeholder="새 비밀번호 확인"
+                className="w-full bg-surface border border-border rounded-lg px-3 py-2 text-sm text-text-primary focus:outline-none focus:border-accent"
+                onKeyDown={(e) => e.key === 'Enter' && handlePasswordChange()} />
+              <button onClick={handlePasswordChange} disabled={pwLoading}
+                className="w-full py-2 rounded-lg bg-surface-2 border border-border text-sm font-semibold text-text-primary hover:bg-surface-2 hover:border-border-2 transition-colors disabled:opacity-50">
+                {pwLoading ? '변경 중...' : '비밀번호 변경'}
+              </button>
+            </div>
+          )}
+        </div>
       </div>
 
       {/* Streak */}
-      <div className="bg-surface border border-border rounded-2xl p-5">
-        <h2 className="text-sm font-semibold text-text-secondary mb-3">내 활동 스트릭</h2>
-        <StreakChart streakMap={streakMap} />
-        <div className="mt-3">
-          <Link href={`/profile/${session.user.id}`} className="text-xs text-accent hover:underline">
-            공개 프로필 보기 →
-          </Link>
+      {profileData && (
+        <div className="bg-surface border border-border rounded-2xl p-5 space-y-4">
+          <div className="flex items-center justify-between">
+            <h2 className="text-sm font-semibold text-text-secondary">활동 분석</h2>
+            <Link href={`/profile/${session.user.id}`} className="text-xs text-accent hover:underline">공개 프로필 →</Link>
+          </div>
+          <StreakChart streakMap={profileData.streakMap} />
+          <div className="border-t border-border pt-4">
+            <p className="text-xs text-text-secondary mb-2 font-medium">포인트 변화</p>
+            <PointLineChart data={profileData.pointTimeline} />
+          </div>
+          <div className="border-t border-border pt-4">
+            <p className="text-xs text-text-secondary mb-1 font-medium">기여 분야</p>
+            <RadarChart data={profileData.radarData} />
+          </div>
         </div>
-      </div>
+      )}
 
       {/* Rivals */}
       <div className="bg-surface border border-border rounded-2xl p-5">
         <h2 className="text-sm font-semibold text-text-secondary mb-3">내 라이벌 ({rivals.length})</h2>
         {rivals.length === 0 ? (
-          <p className="text-xs text-muted text-center py-4">
-            랭킹에서 상대방 프로필을 눌러 라이벌 등록하세요
-          </p>
+          <p className="text-xs text-muted text-center py-4">랭킹에서 상대방 프로필을 눌러 라이벌 등록하세요</p>
         ) : (
           <div className="space-y-2">
             {rivals.map((r) => (
@@ -182,10 +223,7 @@ export default function ProfilePage() {
                   </div>
                   <span className="text-sm text-accent font-semibold ml-auto">{r.points}pt</span>
                 </Link>
-                <button
-                  onClick={() => removeRival(r.id)}
-                  className="p-1.5 text-muted hover:text-red-400 transition-colors shrink-0"
-                >
+                <button onClick={() => removeRival(r.id)} className="p-1.5 text-muted hover:text-red-400 transition-colors shrink-0">
                   <UserMinus size={14} />
                 </button>
               </div>

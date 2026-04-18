@@ -18,35 +18,43 @@ export function getTier(points: number) {
   return TIERS.findLast((t) => points >= t.min) ?? TIERS[0]
 }
 
-export async function awardPostPoints(userId: string, postId: string) {
+export async function awardPostPoints(userId: string, postId: string, subject?: string) {
   await prisma.$transaction([
     prisma.user.update({ where: { id: userId }, data: { points: { increment: POINTS.POST_CREATE } } }),
     prisma.post.update({ where: { id: postId }, data: { pointsAwarded: { increment: POINTS.POST_CREATE } } }),
+    prisma.pointHistory.create({ data: { userId, delta: POINTS.POST_CREATE, reason: '문제 등록', subject } }),
   ])
 }
 
-export async function awardLikePoints(postAuthorId: string, postId: string) {
+export async function awardLikePoints(postAuthorId: string, postId: string, subject?: string) {
   await prisma.$transaction([
     prisma.user.update({ where: { id: postAuthorId }, data: { points: { increment: POINTS.LIKE_RECEIVED } } }),
     prisma.post.update({ where: { id: postId }, data: { pointsAwarded: { increment: POINTS.LIKE_RECEIVED } } }),
+    prisma.pointHistory.create({ data: { userId: postAuthorId, delta: POINTS.LIKE_RECEIVED, reason: '추천 받음', subject } }),
   ])
 }
 
-export async function revokeLikePoints(postAuthorId: string, postId: string) {
+export async function revokeLikePoints(postAuthorId: string, postId: string, subject?: string) {
   await prisma.$transaction([
     prisma.user.update({ where: { id: postAuthorId }, data: { points: { decrement: POINTS.LIKE_RECEIVED } } }),
     prisma.post.update({ where: { id: postId }, data: { pointsAwarded: { decrement: POINTS.LIKE_RECEIVED } } }),
+    prisma.pointHistory.create({ data: { userId: postAuthorId, delta: -POINTS.LIKE_RECEIVED, reason: '추천 취소', subject } }),
   ])
 }
 
 export async function revokeAllPostPoints(postId: string) {
   const post = await prisma.post.findUnique({
     where: { id: postId },
-    select: { authorId: true, pointsAwarded: true },
+    select: { authorId: true, pointsAwarded: true, subject: true },
   })
   if (!post || post.pointsAwarded <= 0) return
-  await prisma.user.update({
-    where: { id: post.authorId },
-    data: { points: { decrement: post.pointsAwarded } },
-  })
+  await prisma.$transaction([
+    prisma.user.update({
+      where: { id: post.authorId },
+      data: { points: { decrement: post.pointsAwarded } },
+    }),
+    prisma.pointHistory.create({
+      data: { userId: post.authorId, delta: -post.pointsAwarded, reason: '글 삭제', subject: post.subject },
+    }),
+  ])
 }

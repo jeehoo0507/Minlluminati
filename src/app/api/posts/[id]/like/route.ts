@@ -9,7 +9,7 @@ export async function POST(_: NextRequest, { params }: { params: { id: string } 
 
   const post = await prisma.post.findUnique({
     where: { id: params.id, deletedAt: null },
-    select: { id: true, authorId: true },
+    select: { id: true, authorId: true, subject: true },
   })
   if (!post) return NextResponse.json({ error: 'Not found' }, { status: 404 })
 
@@ -22,14 +22,14 @@ export async function POST(_: NextRequest, { params }: { params: { id: string } 
     await prisma.like.delete({
       where: { userId_postId: { userId: session.user.id, postId: params.id } },
     })
-    await revokeLikePoints(post.authorId, params.id)
+    await revokeLikePoints(post.authorId, params.id, post.subject)
     const count = await prisma.like.count({ where: { postId: params.id } })
     return NextResponse.json({ liked: false, count })
   } else {
     await prisma.like.create({
       data: { userId: session.user.id, postId: params.id },
     })
-    await awardLikePoints(post.authorId, params.id)
+    await awardLikePoints(post.authorId, params.id, post.subject)
     const count = await prisma.like.count({ where: { postId: params.id } })
     return NextResponse.json({ liked: true, count })
   }

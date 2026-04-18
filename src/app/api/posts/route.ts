@@ -68,7 +68,7 @@ export async function POST(req: NextRequest) {
     },
   })
 
-  await awardPostPoints(session.user.id, post.id)
+  await awardPostPoints(session.user.id, post.id, subject)
 
   return NextResponse.json(post, { status: 201 })
 }

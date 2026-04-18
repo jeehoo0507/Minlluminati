@@ -42,6 +42,9 @@ model User {
   rivals   Rival[] @relation("UserRivals")
   rivalOf  Rival[] @relation("UserRivalOf")
 
+  // Point history
+  pointHistory PointHistory[]
+
   @@map("users")
 }
 
@@ -280,4 +283,16 @@ model Rival {
 
   @@unique([userId, rivalId])
   @@map("rivals")
+}
+
+model PointHistory {
+  id        String   @id @default(cuid())
+  userId    String
+  delta     Int
+  reason    String
+  subject   String?
+  createdAt DateTime @default(now())
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("point_history")
 }
