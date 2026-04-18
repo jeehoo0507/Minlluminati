@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/db'
+
+export const dynamic = 'force-dynamic'
 import { requireAdmin } from '@/lib/auth'
 
 export async function GET() {

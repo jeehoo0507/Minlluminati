@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/db'
+
+export const dynamic = 'force-dynamic'
 import { getAuth } from '@/lib/auth'
 import { awardPostPoints } from '@/lib/scoring'
 
