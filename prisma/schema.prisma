@@ -152,6 +152,7 @@ model ContestProblem {
   content      String
   answer       String
   extraAnswers String  @default("[]") // JSON array of additional correct answers
+  subAnswers   String  @default("[]") // JSON array of {label, answer, extra?} for multi-part problems
   points       Int     @default(100)
   imageUrls    String  @default("[]")
   order        Int     @default(0)
@@ -249,6 +250,9 @@ model GroupPost {
   authorId  String
   title     String
   content   String
+  imageUrls String   @default("[]") // JSON array of image URLs
+  fileUrls  String   @default("[]") // JSON array of PDF/file URLs
+  links     String   @default("[]") // JSON array of {label, url} objects
   group     Group    @relation(fields: [groupId], references: [id], onDelete: Cascade)
   author    User     @relation(fields: [authorId], references: [id], onDelete: Cascade)
   createdAt DateTime @default(now())
@@ -293,6 +297,8 @@ model Problem {
   title         String
   content       String
   answer        String
+  extraAnswers  String   @default("[]") // JSON array of additional correct answers
+  subAnswers    String   @default("[]") // JSON array of {label, answer, extra?} for multi-part problems
   imageUrls     String   @default("[]")
   subject       String?
   authorId      String

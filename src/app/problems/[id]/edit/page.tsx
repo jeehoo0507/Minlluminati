@@ -7,8 +7,14 @@ import remarkMath from 'remark-math'
 import rehypeKatex from 'rehype-katex'
 import remarkGfm from 'remark-gfm'
 import { SUBJECTS, PROBLEM_SUBJECTS, type SubjectKey } from '@/lib/utils'
-import { Upload, Eye, PenLine, Image as ImageIcon, X } from 'lucide-react'
+import { Upload, Eye, PenLine, Image as ImageIcon, X, Plus, Layers } from 'lucide-react'
 import toast from 'react-hot-toast'
+
+interface SubAnswerDef {
+  label: string
+  answer: string
+  extra: string[]
+}
 
 export default function EditProblemPage() {
   const { id } = useParams<{ id: string }>()
@@ -20,6 +26,8 @@ export default function EditProblemPage() {
   const [title, setTitle] = useState('')
   const [content, setContent] = useState('')
   const [answer, setAnswer] = useState('')
+  const [extraAnswers, setExtraAnswers] = useState<string[]>([])
+  const [extraInput, setExtraInput] = useState('')
   const [subject, setSubject] = useState<SubjectKey>('MATH1')
   const [preview, setPreview] = useState(false)
   const [loading, setLoading] = useState(false)
@@ -27,16 +35,42 @@ export default function EditProblemPage() {
   const [dragOver, setDragOver] = useState(false)
   const [images, setImages] = useState<{ url: string; name: string }[]>([])
 
+  // Multi-part
+  const [multiPartMode, setMultiPartMode] = useState(false)
+  const [subAnswers, setSubAnswers] = useState<SubAnswerDef[]>([])
+  const [subExtraInputs, setSubExtraInputs] = useState<string[]>([])
+
   useEffect(() => {
     fetch(`/api/problems/${id}`).then((r) => r.json()).then((p) => {
       if (!p || !p.id) { toast.error('문제를 찾을 수 없습니다'); router.push('/problems'); return }
-      if (session?.user?.role !== 'ADMIN') {
-        toast.error('관리자만 수정할 수 있습니다'); router.push(`/problems/${id}`); return
+      if (session?.user?.role !== 'ADMIN' && session?.user?.id !== p.author?.id) {
+        toast.error('수정 권한이 없습니다'); router.push(`/problems/${id}`); return
       }
       setTitle(p.title)
       setContent(p.content)
       setAnswer(p.answer ?? '')
+      setExtraAnswers(Array.isArray(p.extraAnswers) ? p.extraAnswers : (() => { try { return JSON.parse(p.extraAnswers ?? '[]') } catch { return [] } })())
       setSubject((p.subject as SubjectKey) ?? 'MATH1')
+
+      // Load subAnswers
+      const subs: SubAnswerDef[] = (() => {
+        try {
+          const parsed = JSON.parse(p.subAnswers ?? '[]')
+          return Array.isArray(parsed) ? parsed.map((s: { label: string; answer: string; extra?: string[] }) => ({
+            label: s.label ?? '',
+            answer: s.answer ?? '',
+            extra: Array.isArray(s.extra) ? s.extra : [],
+          })) : []
+        } catch { return [] }
+      })()
+      if (subs.length > 0) {
+        setMultiPartMode(true)
+        setSubAnswers(subs)
+        setSubExtraInputs(subs.map(() => ''))
+      } else {
+        setSubAnswers([{ label: '(1)', answer: '', extra: [] }])
+        setSubExtraInputs([''])
+      }
     })
   }, [id, session, router])
 
@@ -62,14 +96,53 @@ export default function EditProblemPage() {
     } finally { setUploading(false) }
   }
 
+  function addSubAnswer() {
+    setSubAnswers((prev) => [...prev, { label: `(${prev.length + 1})`, answer: '', extra: [] }])
+    setSubExtraInputs((prev) => [...prev, ''])
+  }
+
+  function removeSubAnswer(i: number) {
+    setSubAnswers((prev) => prev.filter((_, k) => k !== i))
+    setSubExtraInputs((prev) => prev.filter((_, k) => k !== i))
+  }
+
+  function updateSubAnswer(i: number, field: keyof SubAnswerDef, value: string | string[]) {
+    setSubAnswers((prev) => prev.map((s, k) => k === i ? { ...s, [field]: value } : s))
+  }
+
+  function addSubExtra(i: number) {
+    const val = subExtraInputs[i]?.trim()
+    if (!val) return
+    updateSubAnswer(i, 'extra', [...subAnswers[i].extra, val])
+    setSubExtraInputs((prev) => prev.map((v, k) => k === i ? '' : v))
+  }
+
+  function removeSubExtra(i: number, j: number) {
+    updateSubAnswer(i, 'extra', subAnswers[i].extra.filter((_, k) => k !== j))
+  }
+
   async function handleSubmit() {
     if (!title.trim() || !content.trim()) { toast.error('제목과 내용을 입력해주세요'); return }
+
+    if (multiPartMode) {
+      if (subAnswers.length === 0 || subAnswers.some((s) => !s.answer.trim())) {
+        toast.error('모든 답변 슬롯에 정답을 입력해주세요'); return
+      }
+    }
+
     setLoading(true)
     try {
       const res = await fetch(`/api/problems/${id}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ title, content, answer, subject }),
+        body: JSON.stringify({
+          title,
+          content,
+          answer: multiPartMode ? '[multi-part]' : answer,
+          extraAnswers,
+          subAnswers: multiPartMode ? subAnswers : [],
+          subject,
+        }),
       })
       if (!res.ok) { toast.error((await res.json()).error ?? '오류 발생'); return }
       toast.success('수정되었습니다')
@@ -153,11 +226,114 @@ export default function EditProblemPage() {
             onChange={(e) => { processFiles(Array.from(e.target.files ?? [])); if (fileRef.current) fileRef.current.value = '' }} />
         </div>
 
-        <div>
-          <label className="block text-xs font-medium text-text-secondary mb-1.5">정답</label>
-          <input value={answer} onChange={(e) => setAnswer(e.target.value)}
-            placeholder="정답을 입력하세요"
-            className="w-full bg-surface border border-border rounded-lg px-3 py-2.5 text-sm text-text-primary focus:outline-none focus:border-accent" />
+        {/* Answer mode toggle */}
+        <div className="space-y-3">
+          <div className="flex items-center gap-3">
+            <label className="block text-xs font-medium text-text-secondary">정답 방식</label>
+            <button
+              type="button"
+              onClick={() => setMultiPartMode((v) => !v)}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium border transition-colors ${
+                multiPartMode
+                  ? 'bg-accent/10 text-accent border-accent/30'
+                  : 'text-text-secondary border-border hover:border-accent/30 hover:text-accent'
+              }`}
+            >
+              <Layers size={12} />
+              {multiPartMode ? '다중 필수 답변' : '단일 답변'}
+            </button>
+          </div>
+
+          {!multiPartMode ? (
+            <div className="space-y-4">
+              <div>
+                <label className="block text-xs font-medium text-text-secondary mb-1.5">정답 (주 정답)</label>
+                <input value={answer} onChange={(e) => setAnswer(e.target.value)}
+                  placeholder="정답을 입력하세요"
+                  className="w-full bg-surface border border-border rounded-lg px-3 py-2.5 text-sm text-text-primary focus:outline-none focus:border-accent" />
+              </div>
+
+              <div>
+                <label className="block text-xs font-medium text-text-secondary mb-1.5">추가 정답 (복수 정답)</label>
+                <div className="flex flex-wrap gap-2 mb-2">
+                  {extraAnswers.map((a, i) => (
+                    <span key={i} className="flex items-center gap-1.5 px-2.5 py-1 bg-surface-2 border border-border rounded-full text-xs text-text-secondary">
+                      {a}
+                      <button onClick={() => setExtraAnswers((p) => p.filter((_, k) => k !== i))} className="text-muted hover:text-red-400"><X size={10} /></button>
+                    </span>
+                  ))}
+                </div>
+                <div className="flex gap-2">
+                  <input value={extraInput} onChange={(e) => setExtraInput(e.target.value)}
+                    onKeyDown={(e) => { if (e.key === 'Enter' && extraInput.trim()) { e.preventDefault(); setExtraAnswers((p) => [...p, extraInput.trim()]); setExtraInput('') } }}
+                    placeholder="추가 정답 입력 후 Enter"
+                    className="flex-1 bg-surface border border-border rounded-lg px-3 py-2 text-sm text-text-primary focus:outline-none focus:border-accent" />
+                  <button onClick={() => { if (extraInput.trim()) { setExtraAnswers((p) => [...p, extraInput.trim()]); setExtraInput('') } }}
+                    className="flex items-center gap-1 px-2.5 py-2 rounded-lg border border-border text-xs text-text-secondary hover:text-text-primary transition-colors">
+                    <Plus size={12} /> 추가
+                  </button>
+                </div>
+                <p className="text-xs text-muted mt-1">공백·대소문자 구분 없이 정답 처리됩니다</p>
+              </div>
+            </div>
+          ) : (
+            <div className="space-y-3 p-4 bg-accent/5 border border-accent/20 rounded-xl">
+              <p className="text-xs text-muted">풀이자가 모든 슬롯을 정확히 입력해야 정답 처리됩니다</p>
+              {subAnswers.map((sub, i) => (
+                <div key={i} className="space-y-2 p-3 bg-background border border-border rounded-lg">
+                  <div className="flex items-center gap-2">
+                    <input
+                      value={sub.label}
+                      onChange={(e) => updateSubAnswer(i, 'label', e.target.value)}
+                      placeholder="레이블 (예: (1))"
+                      className="w-24 bg-surface border border-border rounded-lg px-2 py-1.5 text-xs text-text-primary focus:outline-none focus:border-accent"
+                    />
+                    <input
+                      value={sub.answer}
+                      onChange={(e) => updateSubAnswer(i, 'answer', e.target.value)}
+                      placeholder="정답"
+                      className="flex-1 bg-surface border border-border rounded-lg px-2 py-1.5 text-sm text-text-primary focus:outline-none focus:border-accent"
+                    />
+                    {subAnswers.length > 1 && (
+                      <button type="button" onClick={() => removeSubAnswer(i)} className="text-muted hover:text-red-400 transition-colors">
+                        <X size={14} />
+                      </button>
+                    )}
+                  </div>
+                  {sub.extra.length > 0 && (
+                    <div className="flex flex-wrap gap-1.5 pl-1">
+                      {sub.extra.map((ea, j) => (
+                        <span key={j} className="flex items-center gap-1 px-2 py-0.5 bg-surface-2 border border-border rounded-full text-xs text-text-secondary">
+                          {ea}
+                          <button type="button" onClick={() => removeSubExtra(i, j)} className="text-muted hover:text-red-400"><X size={9} /></button>
+                        </span>
+                      ))}
+                    </div>
+                  )}
+                  <div className="flex gap-2 pl-1">
+                    <input
+                      value={subExtraInputs[i] ?? ''}
+                      onChange={(e) => setSubExtraInputs((prev) => prev.map((v, k) => k === i ? e.target.value : v))}
+                      onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); addSubExtra(i) } }}
+                      placeholder="추가 정답 입력 후 Enter"
+                      className="flex-1 bg-surface border border-border rounded-lg px-2 py-1 text-xs text-text-primary focus:outline-none focus:border-accent"
+                    />
+                    <button type="button" onClick={() => addSubExtra(i)}
+                      className="flex items-center gap-1 px-2 py-1 rounded-lg border border-border text-xs text-text-secondary hover:text-text-primary transition-colors">
+                      <Plus size={10} /> 추가
+                    </button>
+                  </div>
+                </div>
+              ))}
+              <button
+                type="button"
+                onClick={addSubAnswer}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-dashed border-border text-xs text-text-secondary hover:text-accent hover:border-accent/40 transition-colors"
+              >
+                <Plus size={12} /> 답변 슬롯 추가
+              </button>
+            </div>
+          )}
         </div>
 
         <div className="flex justify-end gap-2 pt-2 border-t border-border">

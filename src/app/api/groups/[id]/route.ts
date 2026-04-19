@@ -20,6 +20,12 @@ export async function GET(_: NextRequest, { params }: { params: { id: string } }
   if (!group) return NextResponse.json({ error: 'Not found' }, { status: 404 })
 
   const myMembership = session?.user ? group.members.find((m) => m.userId === session.user.id) ?? null : null
+
+  // 비공개 그룹은 멤버 또는 어드민만 접근 가능
+  if (!group.isPublic && !myMembership && session?.user?.role !== 'ADMIN') {
+    return NextResponse.json({ error: '비공개 그룹입니다. 초대를 통해 가입하세요.' }, { status: 403 })
+  }
+
   return NextResponse.json({ ...group, myMembership })
 }
 

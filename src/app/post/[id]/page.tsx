@@ -36,13 +36,15 @@ export default function PostPage() {
 
   useEffect(() => {
     Promise.all([
-      fetch(`/api/posts/${id}`).then((r) => r.json()),
-      fetch(`/api/posts/${id}/like`).then((r) => r.json()),
+      fetch(`/api/posts/${id}`).then((r) => r.ok ? r.json() : null).catch(() => null),
+      fetch(`/api/posts/${id}/like`).then((r) => r.ok ? r.json() : null).catch(() => null),
     ]).then(([p, l]) => {
-      setPost(p)
-      setLiked(l.liked)
-      setLikeCount(l.count)
-      if (l.likePoints != null) setLikePoints(l.likePoints)
+      setPost(p ?? null)
+      setLiked(l?.liked ?? false)
+      setLikeCount(l?.count ?? 0)
+      if (l?.likePoints != null) setLikePoints(l.likePoints)
+    }).catch(() => {
+      setPost(null)
     }).finally(() => setLoading(false))
   }, [id])
 
@@ -96,6 +98,9 @@ export default function PostPage() {
       <article className="bg-surface border border-border rounded-2xl p-6 space-y-5">
         {/* Meta */}
         <div className="flex items-center gap-2 flex-wrap">
+          {post.postNumber != null && (
+            <span className="text-xs font-mono font-semibold text-accent">#{post.postNumber}</span>
+          )}
           {subjectInfo && (
             <span className="text-xs px-2 py-0.5 rounded-md border border-border text-text-secondary">
               {subjectInfo.label}
@@ -189,7 +194,7 @@ export default function PostPage() {
 
       {/* Comments */}
       <div className="bg-surface border border-border rounded-2xl p-6">
-        <CommentSection postId={id} />
+        <CommentSection postId={post.id} />
       </div>
     </div>
   )

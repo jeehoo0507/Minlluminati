@@ -5,10 +5,10 @@ interface RadarAxis { label: string; value: number }
 interface Props { data: RadarAxis[] }
 
 export function RadarChart({ data }: Props) {
-  const SIZE = 200
+  const SIZE = 240
   const cx = SIZE / 2
   const cy = SIZE / 2
-  const R = 70 // max radius
+  const R = 72 // max radius
 
   const n = data.length
   if (n < 3) return null
@@ -34,7 +34,7 @@ export function RadarChart({ data }: Props) {
   // Axis lines & labels
   const axes = data.map((d, i) => {
     const tip = pt(i, 1)
-    const label = pt(i, 1.25)
+    const label = pt(i, 1.35)
     return { ...d, tipX: tip.x, tipY: tip.y, labelX: label.x, labelY: label.y }
   })
 
@@ -77,7 +77,7 @@ export function RadarChart({ data }: Props) {
           y={a.labelY}
           textAnchor="middle"
           dominantBaseline="middle"
-          fontSize={9}
+          fontSize={8.5}
           fill="currentColor"
           opacity={0.7}
         >

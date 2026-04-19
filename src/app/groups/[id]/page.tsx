@@ -29,12 +29,16 @@ export default function GroupPage() {
   const [desc, setDesc] = useState('')
   const [uploading, setUploading] = useState(false)
   const [showInvite, setShowInvite] = useState(false)
-  const [inviteEmail, setInviteEmail] = useState('')
+  const [inviteQuery, setInviteQuery] = useState('')
   const [inviteLoading, setInviteLoading] = useState(false)
 
   async function load() {
     const res = await fetch(`/api/groups/${id}`)
     if (res.ok) { const d = await res.json(); setGroup(d); setDesc(d.description) }
+    else if (res.status === 403) {
+      const d = await res.json()
+      toast.error(d.error ?? '접근 권한이 없습니다')
+    }
     setLoading(false)
   }
 
@@ -71,15 +75,19 @@ export default function GroupPage() {
   }
 
   async function handleInvite() {
-    if (!inviteEmail.trim()) return
+    if (!inviteQuery.trim()) return
     setInviteLoading(true)
     try {
       const res = await fetch(`/api/groups/${id}/invite`, {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email: inviteEmail.trim() }),
+        body: JSON.stringify({ query: inviteQuery.trim() }),
       })
-      if (res.ok) { toast.success('초대를 보냈습니다'); setInviteEmail(''); setShowInvite(false) }
-      else toast.error((await res.json()).error)
+      if (res.ok) {
+        const d = await res.json()
+        toast.success(`${d.name ?? inviteQuery}님께 초대를 보냈습니다`)
+        setInviteQuery('')
+        setShowInvite(false)
+      } else toast.error((await res.json()).error)
     } finally { setInviteLoading(false) }
   }
 
@@ -91,7 +99,12 @@ export default function GroupPage() {
   }
 
   if (loading) return <div className="max-w-4xl mx-auto px-4 py-8"><div className="h-64 bg-surface border border-border rounded-2xl animate-pulse" /></div>
-  if (!group) return <div className="max-w-4xl mx-auto px-4 py-16 text-center text-text-secondary">그룹을 찾을 수 없습니다</div>
+  if (!group) return (
+    <div className="max-w-4xl mx-auto px-4 py-16 text-center space-y-3">
+      <p className="text-text-secondary">그룹을 찾을 수 없거나 비공개 그룹입니다.</p>
+      <p className="text-xs text-muted">초대를 받은 경우 초대 수락 후 다시 시도하세요.</p>
+    </div>
+  )
 
   const isOwner = session?.user?.id === group.ownerId
   // Invite modal
@@ -106,18 +119,19 @@ export default function GroupPage() {
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50">
           <div className="bg-surface border border-border rounded-2xl p-6 w-full max-w-sm space-y-4">
             <div className="flex items-center justify-between">
-              <h3 className="text-sm font-semibold text-text-primary">이메일로 초대</h3>
+              <h3 className="text-sm font-semibold text-text-primary">멤버 초대</h3>
               <button onClick={() => setShowInvite(false)}><X size={16} className="text-muted" /></button>
             </div>
+            <p className="text-xs text-muted">이메일 또는 닉네임으로 초대할 수 있습니다</p>
             <input
-              type="email" value={inviteEmail} onChange={(e) => setInviteEmail(e.target.value)}
+              value={inviteQuery} onChange={(e) => setInviteQuery(e.target.value)}
               onKeyDown={(e) => e.key === 'Enter' && handleInvite()}
-              placeholder="초대할 이메일 주소"
+              placeholder="이메일 또는 닉네임"
               className="w-full bg-background border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-accent"
             />
-            <button onClick={handleInvite} disabled={inviteLoading || !inviteEmail.trim()}
+            <button onClick={handleInvite} disabled={inviteLoading || !inviteQuery.trim()}
               className="w-full py-2 rounded-lg bg-accent text-white text-sm font-semibold hover:bg-accent-dim transition-colors disabled:opacity-50">
-              {inviteLoading ? '전송 중...' : '초대 보내기'}
+              {inviteLoading ? '검색 중...' : '초대 보내기'}
             </button>
           </div>
         </div>

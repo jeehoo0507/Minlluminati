@@ -37,13 +37,13 @@ export async function GET(req: NextRequest, { params }: { params: { id: string }
   let userSubmission = null
   if (userId) {
     userSubmission = await prisma.problemSubmission.findUnique({
-      where: { problemId_userId: { problemId: params.id, userId } },
+      where: { problemId_userId: { problemId: problem.id, userId } },
     })
   }
 
   // Get correct count
   const correctCount = await prisma.problemSubmission.count({
-    where: { problemId: params.id, correct: true },
+    where: { problemId: problem.id, correct: true },
   })
 
   return NextResponse.json({
@@ -57,27 +57,36 @@ export async function GET(req: NextRequest, { params }: { params: { id: string }
 export async function PATCH(req: NextRequest, { params }: { params: { id: string } }) {
   const session = await getAuth()
   if (!session?.user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-  if (session.user.role !== 'ADMIN') return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
 
   const problem = await prisma.problem.findUnique({ where: { id: params.id } })
   if (!problem) return NextResponse.json({ error: 'Not found' }, { status: 404 })
 
-  const { status, approvedPts, title, content, answer, subject } = await req.json()
+  const isAdmin = session.user.role === 'ADMIN'
+  const isAuthor = problem.authorId === session.user.id
+  if (!isAdmin && !isAuthor) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+
+  const { status, approvedPts, title, content, answer, extraAnswers, subAnswers, subject } = await req.json()
+
+  // status/approvedPts 변경은 관리자만 가능
+  const adminOnlyFields = isAdmin
+    ? { ...(status ? { status } : {}), ...(approvedPts !== undefined ? { approvedPts } : {}) }
+    : {}
 
   const updated = await prisma.problem.update({
     where: { id: params.id },
     data: {
-      ...(status ? { status } : {}),
-      ...(approvedPts !== undefined ? { approvedPts } : {}),
+      ...adminOnlyFields,
       ...(title !== undefined ? { title } : {}),
       ...(content !== undefined ? { content } : {}),
       ...(answer !== undefined ? { answer } : {}),
+      ...(extraAnswers !== undefined ? { extraAnswers: JSON.stringify(extraAnswers) } : {}),
+      ...(subAnswers !== undefined ? { subAnswers: JSON.stringify(subAnswers) } : {}),
       ...(subject !== undefined ? { subject } : {}),
     },
   })
 
-  // Notify author on status change
-  if (status && status !== problem.status && problem.authorId !== session.user.id) {
+  // Notify author on status change (admin action)
+  if (isAdmin && status && status !== problem.status && problem.authorId !== session.user.id) {
     const notifMsg = status === 'APPROVED'
       ? `문제 "${problem.title}"이(가) 승인되었습니다.${approvedPts ? ` (${approvedPts}pt)` : ''}`
       : `문제 "${problem.title}"이(가) 반려되었습니다.`
@@ -98,13 +107,12 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
 export async function DELETE(_: NextRequest, { params }: { params: { id: string } }) {
   const session = await getAuth()
   if (!session?.user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  if (session.user.role !== 'ADMIN') {
+    return NextResponse.json({ error: '관리자만 삭제할 수 있습니다' }, { status: 403 })
+  }
 
   const problem = await prisma.problem.findUnique({ where: { id: params.id } })
   if (!problem) return NextResponse.json({ error: 'Not found' }, { status: 404 })
-
-  if (!session.user.isOwner) {
-    return NextResponse.json({ error: '최고 관리자만 삭제할 수 있습니다' }, { status: 403 })
-  }
 
   await prisma.problem.delete({ where: { id: params.id } })
 

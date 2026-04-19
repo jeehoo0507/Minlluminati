@@ -4,8 +4,14 @@ import { useSession } from 'next-auth/react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { SUBJECTS, PROBLEM_SUBJECTS, type SubjectKey } from '@/lib/utils'
-import { ArrowLeft, ImagePlus, X, Info } from 'lucide-react'
+import { ArrowLeft, ImagePlus, X, Info, Plus, Layers } from 'lucide-react'
 import toast from 'react-hot-toast'
+
+interface SubAnswerDef {
+  label: string
+  answer: string
+  extra: string[]
+}
 
 export default function NewProblemPage() {
   const { data: session } = useSession()
@@ -21,6 +27,13 @@ export default function NewProblemPage() {
   const [imageUrls, setImageUrls] = useState<string[]>([])
   const [uploading, setUploading] = useState(false)
   const [submitting, setSubmitting] = useState(false)
+
+  // Multi-part answer state
+  const [multiPartMode, setMultiPartMode] = useState(false)
+  const [subAnswers, setSubAnswers] = useState<SubAnswerDef[]>([
+    { label: '(1)', answer: '', extra: [] },
+  ])
+  const [subExtraInputs, setSubExtraInputs] = useState<string[]>([''])
 
   if (!session?.user) {
     return (
@@ -70,12 +83,54 @@ export default function NewProblemPage() {
     }
   }
 
+  function addSubAnswer() {
+    setSubAnswers((prev) => [...prev, { label: `(${prev.length + 1})`, answer: '', extra: [] }])
+    setSubExtraInputs((prev) => [...prev, ''])
+  }
+
+  function removeSubAnswer(i: number) {
+    setSubAnswers((prev) => prev.filter((_, k) => k !== i))
+    setSubExtraInputs((prev) => prev.filter((_, k) => k !== i))
+  }
+
+  function updateSubAnswer(i: number, field: keyof SubAnswerDef, value: string | string[]) {
+    setSubAnswers((prev) => prev.map((s, k) => k === i ? { ...s, [field]: value } : s))
+  }
+
+  function addSubExtra(i: number) {
+    const val = subExtraInputs[i]?.trim()
+    if (!val) return
+    updateSubAnswer(i, 'extra', [...subAnswers[i].extra, val])
+    setSubExtraInputs((prev) => prev.map((v, k) => k === i ? '' : v))
+  }
+
+  function removeSubExtra(i: number, j: number) {
+    updateSubAnswer(i, 'extra', subAnswers[i].extra.filter((_, k) => k !== j))
+  }
+
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
-    if (!title.trim() || !content.trim() || !answer.trim()) {
-      toast.error('제목, 내용, 정답을 모두 입력해주세요')
-      return
+
+    if (multiPartMode) {
+      if (!title.trim() || !content.trim()) {
+        toast.error('제목과 내용을 입력해주세요')
+        return
+      }
+      if (subAnswers.length === 0) {
+        toast.error('답변 슬롯을 최소 하나 추가해주세요')
+        return
+      }
+      if (subAnswers.some((s) => !s.answer.trim())) {
+        toast.error('모든 답변 슬롯에 정답을 입력해주세요')
+        return
+      }
+    } else {
+      if (!title.trim() || !content.trim() || !answer.trim()) {
+        toast.error('제목, 내용, 정답을 모두 입력해주세요')
+        return
+      }
     }
+
     setSubmitting(true)
     try {
       const res = await fetch('/api/problems', {
@@ -84,10 +139,11 @@ export default function NewProblemPage() {
         body: JSON.stringify({
           title: title.trim(),
           content: content.trim(),
-          answer: answer.trim(),
+          answer: multiPartMode ? '[multi-part]' : answer.trim(),
           subject: subject || null,
           requestedPts,
           imageUrls,
+          subAnswers: multiPartMode ? subAnswers : [],
         }),
       })
       if (res.ok) {
@@ -102,6 +158,10 @@ export default function NewProblemPage() {
       setSubmitting(false)
     }
   }
+
+  const canSubmit = multiPartMode
+    ? !!(title.trim() && content.trim() && subAnswers.length > 0 && subAnswers.every((s) => s.answer.trim()))
+    : !!(title.trim() && content.trim() && answer.trim())
 
   return (
     <div className="max-w-3xl mx-auto px-4 py-8 space-y-6">
@@ -138,7 +198,7 @@ export default function NewProblemPage() {
           >
             <option value="">과목 선택 (선택사항)</option>
             {PROBLEM_SUBJECTS.map((key) => (
-              <option key={key} value={key}>{SUBJECTS[key].label}</option>
+              <option key={key} value={key}>{SUBJECTS[key as SubjectKey].label}</option>
             ))}
           </select>
         </div>
@@ -191,17 +251,93 @@ export default function NewProblemPage() {
           <input ref={fileRef} type="file" accept="image/*" multiple className="hidden" onChange={handleImageUpload} />
         </div>
 
-        {/* Answer */}
-        <div className="space-y-1.5">
-          <label className="text-sm font-medium text-text-primary">정답 *</label>
-          <p className="text-xs text-muted">정답은 대소문자 구분 없이, 공백 제외하고 비교됩니다</p>
-          <input
-            value={answer}
-            onChange={(e) => setAnswer(e.target.value)}
-            placeholder="정답을 입력하세요"
-            className="w-full bg-background border border-border rounded-lg px-3 py-2 text-sm text-text-primary placeholder:text-muted focus:outline-none focus:border-accent"
-            required
-          />
+        {/* Answer mode toggle */}
+        <div className="space-y-3">
+          <div className="flex items-center gap-3">
+            <label className="text-sm font-medium text-text-primary">정답 방식</label>
+            <button
+              type="button"
+              onClick={() => setMultiPartMode((v) => !v)}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium border transition-colors ${
+                multiPartMode
+                  ? 'bg-accent/10 text-accent border-accent/30'
+                  : 'text-text-secondary border-border hover:border-accent/30 hover:text-accent'
+              }`}
+            >
+              <Layers size={13} />
+              {multiPartMode ? '다중 필수 답변 (클릭하면 단일로)' : '단일 답변 (클릭하면 다중으로)'}
+            </button>
+          </div>
+
+          {!multiPartMode ? (
+            <div className="space-y-1.5">
+              <p className="text-xs text-muted">정답은 대소문자 구분 없이, 공백 제외하고 비교됩니다</p>
+              <input
+                value={answer}
+                onChange={(e) => setAnswer(e.target.value)}
+                placeholder="정답을 입력하세요"
+                className="w-full bg-background border border-border rounded-lg px-3 py-2 text-sm text-text-primary placeholder:text-muted focus:outline-none focus:border-accent"
+              />
+            </div>
+          ) : (
+            <div className="space-y-3 p-4 bg-accent/5 border border-accent/20 rounded-xl">
+              <p className="text-xs text-muted">풀이자가 모든 슬롯을 정확히 입력해야 정답 처리됩니다. 대소문자·공백 무시</p>
+              {subAnswers.map((sub, i) => (
+                <div key={i} className="space-y-2 p-3 bg-background border border-border rounded-lg">
+                  <div className="flex items-center gap-2">
+                    <input
+                      value={sub.label}
+                      onChange={(e) => updateSubAnswer(i, 'label', e.target.value)}
+                      placeholder="레이블 (예: (1))"
+                      className="w-24 bg-surface border border-border rounded-lg px-2 py-1.5 text-xs text-text-primary focus:outline-none focus:border-accent"
+                    />
+                    <input
+                      value={sub.answer}
+                      onChange={(e) => updateSubAnswer(i, 'answer', e.target.value)}
+                      placeholder="정답"
+                      className="flex-1 bg-surface border border-border rounded-lg px-2 py-1.5 text-sm text-text-primary focus:outline-none focus:border-accent"
+                    />
+                    {subAnswers.length > 1 && (
+                      <button type="button" onClick={() => removeSubAnswer(i)} className="text-muted hover:text-red-400 transition-colors">
+                        <X size={14} />
+                      </button>
+                    )}
+                  </div>
+                  {/* Extra answers for this slot */}
+                  {sub.extra.length > 0 && (
+                    <div className="flex flex-wrap gap-1.5 pl-1">
+                      {sub.extra.map((ea, j) => (
+                        <span key={j} className="flex items-center gap-1 px-2 py-0.5 bg-surface-2 border border-border rounded-full text-xs text-text-secondary">
+                          {ea}
+                          <button type="button" onClick={() => removeSubExtra(i, j)} className="text-muted hover:text-red-400"><X size={9} /></button>
+                        </span>
+                      ))}
+                    </div>
+                  )}
+                  <div className="flex gap-2 pl-1">
+                    <input
+                      value={subExtraInputs[i] ?? ''}
+                      onChange={(e) => setSubExtraInputs((prev) => prev.map((v, k) => k === i ? e.target.value : v))}
+                      onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); addSubExtra(i) } }}
+                      placeholder="추가 정답 입력 후 Enter"
+                      className="flex-1 bg-surface border border-border rounded-lg px-2 py-1 text-xs text-text-primary focus:outline-none focus:border-accent"
+                    />
+                    <button type="button" onClick={() => addSubExtra(i)}
+                      className="flex items-center gap-1 px-2 py-1 rounded-lg border border-border text-xs text-text-secondary hover:text-text-primary transition-colors">
+                      <Plus size={10} /> 추가
+                    </button>
+                  </div>
+                </div>
+              ))}
+              <button
+                type="button"
+                onClick={addSubAnswer}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-dashed border-border text-xs text-text-secondary hover:text-accent hover:border-accent/40 transition-colors"
+              >
+                <Plus size={12} /> 답변 슬롯 추가
+              </button>
+            </div>
+          )}
         </div>
 
         {/* Requested Points */}
@@ -230,7 +366,7 @@ export default function NewProblemPage() {
         <div className="flex items-center gap-3 pt-2">
           <button
             type="submit"
-            disabled={submitting || !title.trim() || !content.trim() || !answer.trim()}
+            disabled={submitting || !canSubmit}
             className="px-6 py-2.5 rounded-xl bg-accent text-background text-sm font-semibold hover:bg-accent-dim transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
           >
             {submitting ? '등록 중...' : '문제 등록'}

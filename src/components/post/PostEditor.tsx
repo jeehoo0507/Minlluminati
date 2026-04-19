@@ -17,7 +17,8 @@ const TYPE_OPTIONS = [
   { value: 'FREE', label: '자유' },
 ]
 
-export function PostEditor() {
+export function PostEditor({ initialSubject, initialType }: { initialSubject?: SubjectKey; initialType?: string } = {}) {
+  // initialSubject and initialType are optional; defaults handled via useState
   const { data: session } = useSession()
   const router = useRouter()
   const fileRef = useRef<HTMLInputElement>(null)
@@ -25,9 +26,9 @@ export function PostEditor() {
 
   const [title, setTitle] = useState('')
   const [content, setContent] = useState('')
-  const [subject, setSubject] = useState<SubjectKey>('MATH1')
+  const [subject, setSubject] = useState<SubjectKey>(initialSubject ?? 'MATH1')
   const [unit, setUnit] = useState('')
-  const [type, setType] = useState('PROBLEM')
+  const [type, setType] = useState(initialType ?? 'PROBLEM')
   const [preview, setPreview] = useState(false)
   const [loading, setLoading] = useState(false)
   const [uploading, setUploading] = useState(false)

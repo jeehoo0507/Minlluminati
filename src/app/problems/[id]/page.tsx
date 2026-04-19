@@ -1,5 +1,5 @@
 'use client'
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { useSession } from 'next-auth/react'
 import { useParams, useRouter } from 'next/navigation'
 import ReactMarkdown from 'react-markdown'
@@ -10,9 +10,15 @@ import { Avatar } from '@/components/ui/Avatar'
 import { TierBadge } from '@/components/ui/TierBadge'
 import { ProblemTierBadge } from '@/components/ui/ProblemTierBadge'
 import { SUBJECTS, timeAgo, parseJsonSafe, type SubjectKey, cn } from '@/lib/utils'
-import { ArrowLeft, CheckCircle2, XCircle, Users, MessageSquare, Send, Trash2, ImagePlus, X, Star, Pencil } from 'lucide-react'
+import { ArrowLeft, CheckCircle2, XCircle, Users, MessageSquare, Send, Trash2, ImagePlus, X, Star, Pencil, Download, Lock } from 'lucide-react'
 import Link from 'next/link'
 import toast from 'react-hot-toast'
+
+interface SubAnswerDef {
+  label: string
+  answer: string
+  extra?: string[]
+}
 
 interface Problem {
   id: string
@@ -20,11 +26,14 @@ interface Problem {
   title: string
   content: string
   answer: string
+  extraAnswers?: string
+  subAnswers?: string
   subject?: string | null
   status: string
   requestedPts: number
   approvedPts?: number | null
   imageUrls: string
+  contestId?: string | null
   createdAt: string
   author: { id: string; name?: string | null; image?: string | null; points: number; role: string }
   _count: { submissions: number; solutions: number }
@@ -79,6 +88,7 @@ export default function ProblemDetailPage() {
 
   // Submit form
   const [myAnswer, setMyAnswer] = useState('')
+  const [myParts, setMyParts] = useState<string[]>([])
   const [submitting, setSubmitting] = useState(false)
 
   // Admin
@@ -93,10 +103,10 @@ export default function ProblemDetailPage() {
   const [solutions, setSolutions] = useState<SolutionWithComments[]>([])
   const [solsLoading, setSolsLoading] = useState(false)
   const [newSolution, setNewSolution] = useState('')
-  const [solutionImages, setSolutionImages] = useState<string[]>([])
   const [solutionSubmitting, setSolutionSubmitting] = useState(false)
   const [solutionUploading, setSolutionUploading] = useState(false)
   const [commentInputs, setCommentInputs] = useState<Record<string, string>>({})
+  const solutionTextareaRef = useRef<HTMLTextAreaElement>(null)
 
   const loadProblem = useCallback(async () => {
     const res = await fetch(`/api/problems/${id}`)
@@ -127,7 +137,7 @@ export default function ProblemDetailPage() {
     const res = await fetch(`/api/problems/${id}/solutions`)
     if (res.ok) {
       const data = await res.json()
-      setSolutions(data.solutions.map((s: Solution) => ({ ...s, showComments: false, comments: [] })))
+      setSolutions((data.solutions ?? []).map((s: Solution) => ({ ...s, showComments: false, comments: [] })))
     }
     setSolsLoading(false)
   }, [id])
@@ -140,14 +150,23 @@ export default function ProblemDetailPage() {
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
     if (!session?.user) { toast.error('로그인이 필요합니다'); return }
-    if (!myAnswer.trim()) return
+
+    const subAnswerDefs = parseJsonSafe<SubAnswerDef[]>(problem?.subAnswers ?? '[]', [])
+    const isMultiPart = subAnswerDefs.length > 0
+
+    if (isMultiPart) {
+      if (myParts.some((p) => !p?.trim())) { toast.error('모든 답을 입력해주세요'); return }
+    } else {
+      if (!myAnswer.trim()) return
+    }
 
     setSubmitting(true)
     try {
+      const body = isMultiPart ? { parts: myParts } : { answer: myAnswer }
       const res = await fetch(`/api/problems/${id}/submit`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ answer: myAnswer }),
+        body: JSON.stringify(body),
       })
       if (res.ok) {
         const data = await res.json()
@@ -158,6 +177,7 @@ export default function ProblemDetailPage() {
         }
         await loadProblem()
         setMyAnswer('')
+        setMyParts([])
       } else {
         const err = await res.json()
         toast.error(err.error ?? '제출 실패')
@@ -199,18 +219,38 @@ export default function ProblemDetailPage() {
     }
   }
 
+  function insertSolutionImageAtCursor(url: string, name: string) {
+    const ta = solutionTextareaRef.current
+    const insert = `![${name}](${url})`
+    if (!ta) {
+      setNewSolution((c) => c + '\n' + insert + '\n')
+      return
+    }
+    const start = ta.selectionStart
+    const end = ta.selectionEnd
+    setNewSolution((c) => c.slice(0, start) + insert + c.slice(end))
+    // Restore cursor position after React re-render
+    setTimeout(() => {
+      ta.selectionStart = ta.selectionEnd = start + insert.length
+      ta.focus()
+    }, 0)
+  }
+
   async function handleSolutionImageUpload(e: React.ChangeEvent<HTMLInputElement>) {
     const files = Array.from(e.target.files ?? [])
     if (!files.length) return
+    // Reset input so same file can be re-selected
+    e.target.value = ''
     setSolutionUploading(true)
     try {
-      const uploaded: string[] = []
       for (const file of files) {
         const fd = new FormData(); fd.append('file', file)
         const res = await fetch('/api/upload', { method: 'POST', body: fd })
-        if (res.ok) { const d = await res.json(); uploaded.push(d.url) }
+        if (res.ok) {
+          const d = await res.json()
+          insertSolutionImageAtCursor(d.url, d.name ?? file.name)
+        }
       }
-      setSolutionImages((prev) => [...prev, ...uploaded])
     } finally { setSolutionUploading(false) }
   }
 
@@ -222,12 +262,11 @@ export default function ProblemDetailPage() {
       const res = await fetch(`/api/problems/${id}/solutions`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ content: newSolution, imageUrls: solutionImages }),
+        body: JSON.stringify({ content: newSolution, imageUrls: [] }),
       })
       if (res.ok) {
         toast.success('풀이가 등록되었습니다')
         setNewSolution('')
-        setSolutionImages([])
         await loadSolutions()
       } else {
         const err = await res.json()
@@ -285,12 +324,17 @@ export default function ProblemDetailPage() {
   if (!problem) return null
 
   const images = parseJsonSafe<string[]>(problem.imageUrls, [])
+  const subAnswerDefs = parseJsonSafe<SubAnswerDef[]>(problem.subAnswers ?? '[]', [])
+  const isMultiPart = subAnswerDefs.length > 0
   const subjectInfo = problem.subject ? SUBJECTS[problem.subject as SubjectKey] : null
   const status = STATUS_LABELS[problem.status] ?? STATUS_LABELS.PENDING
   const isAdmin = session?.user?.role === 'ADMIN'
   const isAuthor = session?.user?.id === problem.author.id
-  const canDelete = isAdmin || (isAuthor && problem.status === 'PENDING')
+  const canDelete = isAdmin
+  const canEdit = isAdmin || isAuthor
   const alreadySolved = problem.userSubmission?.correct === true
+  // 풀이 탭 잠금: 정답을 맞춰야 볼 수 있음 (어드민·출제자 제외)
+  const solutionsLocked = !alreadySolved && !isAdmin && !isAuthor
 
   const TABS = [
     { key: 'problem', label: '문제' },
@@ -323,6 +367,12 @@ export default function ProblemDetailPage() {
                   {problem.approvedPts}pt
                 </span>
               )}
+              {problem.contestId && (
+                <Link href={`/contests/${problem.contestId}`}
+                  className="text-xs px-2 py-0.5 rounded border border-violet-400/40 text-violet-500 bg-violet-50/30 hover:bg-violet-100/40 transition-colors">
+                  🏆 대회 출제
+                </Link>
+              )}
               {alreadySolved && (
                 <span className="flex items-center gap-1 text-xs text-green-600 font-semibold">
                   <CheckCircle2 size={12} />
@@ -333,7 +383,7 @@ export default function ProblemDetailPage() {
             <h1 className="text-xl font-bold text-text-primary">{problem.title}</h1>
           </div>
           <div className="shrink-0 flex items-center gap-1">
-            {isAdmin && (
+            {canEdit && (
               <Link
                 href={`/problems/${id}/edit`}
                 className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs text-muted hover:text-accent hover:bg-accent/5 border border-transparent hover:border-accent/20 transition-all"
@@ -396,10 +446,20 @@ export default function ProblemDetailPage() {
 
             {/* Images */}
             {images.length > 0 && (
-              <div className="flex flex-wrap gap-3 pt-2">
+              <div className="flex flex-wrap gap-2 pt-2">
                 {images.map((url) => (
-                  // eslint-disable-next-line @next/next/no-img-element
-                  <img key={url} src={url} alt="문제 이미지" className="max-h-64 rounded-lg border border-border object-contain" />
+                  <div key={url} className="relative group inline-block">
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img src={url} alt="첨부 이미지" className="max-h-24 rounded-lg border border-border object-contain cursor-pointer hover:opacity-90 transition-opacity" onClick={() => window.open(url, '_blank')} />
+                    <a
+                      href={url}
+                      download
+                      className="absolute bottom-1 right-1 w-5 h-5 bg-black/60 text-white rounded flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
+                      title="다운로드"
+                    >
+                      <Download size={10} />
+                    </a>
+                  </div>
                 ))}
               </div>
             )}
@@ -413,33 +473,87 @@ export default function ProblemDetailPage() {
                     <div>
                       <p className="font-semibold text-sm">정답을 맞혔습니다!</p>
                       {problem.userSubmission && (
-                        <p className="text-xs mt-0.5 opacity-75">제출한 답: {problem.userSubmission.answer}</p>
+                        <p className="text-xs mt-0.5 opacity-75">
+                          {isMultiPart
+                            ? (() => {
+                                try {
+                                  const parts: string[] = JSON.parse(problem.userSubmission.answer)
+                                  return subAnswerDefs.map((def, i) => `${def.label}: ${parts[i] ?? ''}`).join(' / ')
+                                } catch {
+                                  return problem.userSubmission.answer
+                                }
+                              })()
+                            : `제출한 답: ${problem.userSubmission.answer}`
+                          }
+                        </p>
                       )}
                     </div>
                   </div>
                 ) : problem.userSubmission ? (
                   <div className="flex items-center gap-2 p-3 bg-red-50 border border-red-200 rounded-xl text-red-700">
                     <XCircle size={16} />
-                    <p className="text-sm">마지막 제출: <strong>{problem.userSubmission.answer}</strong> — 오답</p>
+                    <p className="text-sm">마지막 제출: <strong>
+                      {isMultiPart
+                        ? (() => {
+                            try {
+                              const parts: string[] = JSON.parse(problem.userSubmission.answer)
+                              return subAnswerDefs.map((def, i) => `${def.label}: ${parts[i] ?? ''}`).join(' / ')
+                            } catch {
+                              return problem.userSubmission.answer
+                            }
+                          })()
+                        : problem.userSubmission.answer
+                      }
+                    </strong> — 오답</p>
                   </div>
                 ) : null}
 
                 {!alreadySolved && session?.user && (
-                  <form onSubmit={handleSubmit} className="flex gap-2">
-                    <input
-                      value={myAnswer}
-                      onChange={(e) => setMyAnswer(e.target.value)}
-                      placeholder="답을 입력하세요..."
-                      className="flex-1 bg-background border border-border rounded-lg px-3 py-2 text-sm text-text-primary placeholder:text-muted focus:outline-none focus:border-accent"
-                    />
-                    <button
-                      type="submit"
-                      disabled={submitting || !myAnswer.trim()}
-                      className="px-4 py-2 rounded-lg bg-accent text-background text-sm font-semibold hover:bg-accent-dim transition-colors disabled:opacity-50 flex items-center gap-1.5"
-                    >
-                      <Send size={13} />
-                      {submitting ? '제출 중...' : '제출'}
-                    </button>
+                  <form onSubmit={handleSubmit} className="space-y-2">
+                    {isMultiPart ? (
+                      <div className="space-y-2">
+                        {subAnswerDefs.map((def, i) => (
+                          <div key={i} className="flex items-center gap-2">
+                            <span className="text-xs font-medium text-text-secondary w-10 shrink-0">{def.label}</span>
+                            <input
+                              value={myParts[i] ?? ''}
+                              onChange={(e) => {
+                                const next = [...myParts]
+                                next[i] = e.target.value
+                                setMyParts(next)
+                              }}
+                              placeholder={`${def.label} 답 입력`}
+                              className="flex-1 bg-background border border-border rounded-lg px-3 py-2 text-sm text-text-primary placeholder:text-muted focus:outline-none focus:border-accent"
+                            />
+                          </div>
+                        ))}
+                        <button
+                          type="submit"
+                          disabled={submitting || myParts.length !== subAnswerDefs.length || myParts.some((p) => !p?.trim())}
+                          className="w-full px-4 py-2 rounded-lg bg-accent text-background text-sm font-semibold hover:bg-accent-dim transition-colors disabled:opacity-50 flex items-center justify-center gap-1.5"
+                        >
+                          <Send size={13} />
+                          {submitting ? '제출 중...' : '모두 제출'}
+                        </button>
+                      </div>
+                    ) : (
+                      <div className="flex gap-2">
+                        <input
+                          value={myAnswer}
+                          onChange={(e) => setMyAnswer(e.target.value)}
+                          placeholder="답을 입력하세요..."
+                          className="flex-1 bg-background border border-border rounded-lg px-3 py-2 text-sm text-text-primary placeholder:text-muted focus:outline-none focus:border-accent"
+                        />
+                        <button
+                          type="submit"
+                          disabled={submitting || !myAnswer.trim()}
+                          className="px-4 py-2 rounded-lg bg-accent text-background text-sm font-semibold hover:bg-accent-dim transition-colors disabled:opacity-50 flex items-center gap-1.5"
+                        >
+                          <Send size={13} />
+                          {submitting ? '제출 중...' : '제출'}
+                        </button>
+                      </div>
+                    )}
                   </form>
                 )}
 
@@ -455,6 +569,19 @@ export default function ProblemDetailPage() {
             {isAdmin && (
               <div className="pt-4 border-t border-border space-y-3">
                 <p className="text-xs font-semibold text-muted uppercase tracking-wider">관리자 패널</p>
+                {isMultiPart && (
+                  <div className="p-3 bg-surface-2 rounded-lg text-xs space-y-1">
+                    <p className="font-medium text-text-secondary">다중 필수 답변:</p>
+                    {subAnswerDefs.map((def, i) => (
+                      <p key={i} className="text-text-secondary">
+                        <span className="font-mono text-accent">{def.label}</span>: {def.answer}
+                        {def.extra && def.extra.length > 0 && (
+                          <span className="text-muted"> ({def.extra.join(', ')})</span>
+                        )}
+                      </p>
+                    ))}
+                  </div>
+                )}
                 <div className="flex items-center gap-3 flex-wrap">
                   <div className="flex items-center gap-2">
                     <label className="text-sm text-text-secondary">승인 점수:</label>
@@ -543,40 +670,35 @@ export default function ProblemDetailPage() {
         {/* ===== 풀이 tab ===== */}
         {activeTab === 'solutions' && (
           <div className="space-y-5 pt-1">
+            {/* Locked state */}
+            {solutionsLocked && (
+              <div className="flex flex-col items-center gap-3 py-10 text-center">
+                <div className="w-12 h-12 rounded-full bg-surface-2 flex items-center justify-center">
+                  <Lock size={22} className="text-muted" />
+                </div>
+                <p className="text-sm font-medium text-text-secondary">정답을 맞춰야 풀이를 볼 수 있습니다</p>
+                <p className="text-xs text-muted">문제를 직접 풀고 정답을 제출해보세요!</p>
+              </div>
+            )}
             {/* Add solution form */}
-            {session?.user && (
+            {!solutionsLocked && session?.user && (
               <form onSubmit={handleSolutionSubmit} className="space-y-3 p-4 bg-background border border-border rounded-xl">
                 <p className="text-sm font-medium text-text-primary">풀이 작성</p>
                 <textarea
+                  ref={solutionTextareaRef}
                   value={newSolution}
                   onChange={(e) => setNewSolution(e.target.value)}
-                  placeholder="풀이 내용을 작성하세요. 마크다운과 $수식$ 사용 가능"
+                  placeholder="풀이 내용을 작성하세요. 마크다운과 $수식$ 사용 가능&#10;이미지는 아래 버튼으로 커서 위치에 삽입됩니다"
                   rows={5}
                   className="w-full bg-surface border border-border rounded-lg px-3 py-2 text-sm text-text-primary placeholder:text-muted focus:outline-none focus:border-accent resize-y font-mono"
                 />
-                {solutionImages.length > 0 && (
-                  <div className="flex gap-2 flex-wrap">
-                    {solutionImages.map((url) => (
-                      <div key={url} className="relative group">
-                        {/* eslint-disable-next-line @next/next/no-img-element */}
-                        <img src={url} alt="" className="w-16 h-16 object-cover rounded-lg border border-border" />
-                        <button
-                          type="button"
-                          onClick={() => setSolutionImages((p) => p.filter((u) => u !== url))}
-                          className="absolute -top-1 -right-1 w-4 h-4 bg-red-500 text-white rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
-                        >
-                          <X size={8} />
-                        </button>
-                      </div>
-                    ))}
-                  </div>
-                )}
                 <div className="flex items-center gap-2">
-                  <label className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-border text-xs text-text-secondary hover:text-accent hover:border-accent/40 cursor-pointer transition-colors">
+                  <label className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-border text-xs cursor-pointer transition-colors ${solutionUploading ? 'opacity-50 cursor-not-allowed' : 'text-text-secondary hover:text-accent hover:border-accent/40'}`}>
                     <ImagePlus size={13} />
-                    이미지
+                    {solutionUploading ? '업로드 중...' : '이미지 삽입'}
                     <input type="file" accept="image/*" multiple className="hidden" onChange={handleSolutionImageUpload} disabled={solutionUploading} />
                   </label>
+                  <span className="text-xs text-muted">커서 위치에 이미지가 삽입됩니다</span>
                   <button
                     type="submit"
                     disabled={solutionSubmitting || !newSolution.trim()}
@@ -589,7 +711,7 @@ export default function ProblemDetailPage() {
             )}
 
             {/* Solutions list */}
-            {solsLoading ? (
+            {!solutionsLocked && (solsLoading ? (
               <div className="space-y-3">
                 {Array.from({ length: 3 }).map((_, i) => (
                   <div key={i} className="h-32 bg-surface-2 rounded-xl animate-pulse" />
@@ -627,8 +749,18 @@ export default function ProblemDetailPage() {
                         {solImages.length > 0 && (
                           <div className="flex flex-wrap gap-2">
                             {solImages.map((url) => (
-                              // eslint-disable-next-line @next/next/no-img-element
-                              <img key={url} src={url} alt="" className="max-h-48 rounded-lg border border-border" />
+                              <div key={url} className="relative group inline-block">
+                                {/* eslint-disable-next-line @next/next/no-img-element */}
+                                <img src={url} alt="" className="max-h-20 rounded-lg border border-border cursor-pointer hover:opacity-90 transition-opacity" onClick={() => window.open(url, '_blank')} />
+                                <a
+                                  href={url}
+                                  download
+                                  className="absolute bottom-1 right-1 w-5 h-5 bg-black/60 text-white rounded flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
+                                  title="다운로드"
+                                >
+                                  <Download size={10} />
+                                </a>
+                              </div>
                             ))}
                           </div>
                         )}
@@ -685,7 +817,7 @@ export default function ProblemDetailPage() {
               <p className="text-sm text-text-secondary text-center py-8">
                 아직 풀이가 없습니다. 첫 번째 풀이를 작성해보세요!
               </p>
-            )}
+            ))}
           </div>
         )}
       </div>

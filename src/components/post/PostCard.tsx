@@ -8,6 +8,7 @@ import { Heart, MessageCircle, ChevronRight } from 'lucide-react'
 interface PostCardProps {
   post: {
     id: string
+    postNumber?: number | null
     title: string
     content: string
     subject: string
@@ -39,11 +40,14 @@ export function PostCard({ post }: PostCardProps) {
     .slice(0, 120)
 
   return (
-    <Link href={`/post/${post.id}`} className="block group">
+    <Link href={`/post/${post.postNumber ?? post.id}`} className="block group">
       <article className="p-4 bg-surface border border-border rounded-xl hover:border-border-2 transition-all duration-200 hover:bg-surface-2">
         {/* Header */}
         <div className="flex items-start justify-between gap-3 mb-2">
           <div className="flex items-center gap-1.5 flex-wrap">
+            {post.postNumber != null && (
+              <span className="text-xs font-mono font-semibold text-accent">#{post.postNumber}</span>
+            )}
             {subjectInfo && (
               <span className="text-xs px-2 py-0.5 rounded-md border border-border text-text-secondary">
                 {subjectInfo.short}

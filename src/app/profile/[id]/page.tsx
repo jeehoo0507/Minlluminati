@@ -23,6 +23,7 @@ interface UserProfile {
   streakMap: Record<string, number>
   pointTimeline: { month: string; points: number }[]
   radarData: { label: string; value: number }[]
+  solvedProblems: { id: string; problemNumber: number; title: string; subject: string | null }[]
   isRival: boolean
   rivals: { id: string; name?: string | null; image?: string | null; points: number }[]
 }
@@ -124,6 +125,29 @@ export default function PublicProfilePage() {
         <div className="border-t border-border pt-4">
           <p className="text-xs text-text-secondary mb-2 font-medium">포인트 변화</p>
           <PointLineChart data={profile.pointTimeline} />
+        </div>
+
+        {/* Solved problems */}
+        <div className="border-t border-border pt-4">
+          <p className="text-xs text-text-secondary mb-2 font-medium">
+            푼 문제 <span className="text-muted font-normal">({profile.solvedProblems.length})</span>
+          </p>
+          {profile.solvedProblems.length === 0 ? (
+            <p className="text-xs text-muted py-2">아직 푼 문제가 없습니다</p>
+          ) : (
+            <div className="flex flex-wrap gap-1.5">
+              {profile.solvedProblems.map((p) => (
+                <Link
+                  key={p.id}
+                  href={`/problems/${p.id}`}
+                  className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs bg-emerald-500/10 text-emerald-500 hover:bg-emerald-500/20 transition-colors border border-emerald-500/20"
+                >
+                  <span className="font-mono font-semibold">#{p.problemNumber}</span>
+                  <span className="text-emerald-400/80 truncate max-w-[120px]">{p.title}</span>
+                </Link>
+              ))}
+            </div>
+          )}
         </div>
 
         {/* Radar */}

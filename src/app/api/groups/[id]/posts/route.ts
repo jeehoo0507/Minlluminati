@@ -22,11 +22,19 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
   })
   if (!member) return NextResponse.json({ error: '그룹 멤버만 글을 작성할 수 있습니다' }, { status: 403 })
 
-  const { title, content } = await req.json()
+  const { title, content, imageUrls = [], fileUrls = [], links = [] } = await req.json()
   if (!title?.trim() || !content?.trim()) return NextResponse.json({ error: '제목과 내용을 입력해주세요' }, { status: 400 })
 
   const post = await prisma.groupPost.create({
-    data: { groupId: params.id, authorId: session.user.id, title: title.trim(), content: content.trim() },
+    data: {
+      groupId: params.id,
+      authorId: session.user.id,
+      title: title.trim(),
+      content: content.trim(),
+      imageUrls: JSON.stringify(imageUrls),
+      fileUrls: JSON.stringify(fileUrls),
+      links: JSON.stringify(links),
+    },
     include: { author: { select: { id: true, name: true, image: true, points: true } } },
   })
   return NextResponse.json(post, { status: 201 })

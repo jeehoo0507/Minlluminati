@@ -10,10 +10,11 @@ import Link from 'next/link'
 import { Avatar } from '@/components/ui/Avatar'
 import { TierBadge } from '@/components/ui/TierBadge'
 import { timeAgo } from '@/lib/utils'
-import { Clock, Users, CheckCircle, Play, Pencil, X, Save, Send, MessageSquare, Plus, ImagePlus, RefreshCw, Ban, UserPlus, Eye, PenLine } from 'lucide-react'
+import { Clock, Users, CheckCircle, Play, Pencil, X, Save, Send, MessageSquare, Plus, ImagePlus, RefreshCw, Ban, UserPlus, Eye, PenLine, Trash2, Download } from 'lucide-react'
 import toast from 'react-hot-toast'
 
-interface Problem { id: string; label: string; title: string; content: string; answer?: string; extraAnswers?: string[]; points: number; imageUrls?: string[]; allowRetry?: boolean }
+interface SubAnswerDef { label: string; answer: string; extra?: string[] }
+interface Problem { id: string; label: string; title: string; content: string; answer?: string; extraAnswers?: string[]; subAnswers?: SubAnswerDef[]; points: number; imageUrls?: string[]; allowRetry?: boolean }
 interface Contributor { id: string; userId: string; role: string; user: { id: string; name?: string | null; image?: string | null; points: number } }
 interface ChatMsg { id: string; content: string; createdAt: string; author: { id: string; name?: string | null; image?: string | null } }
 interface Contest {
@@ -32,6 +33,7 @@ export default function ContestPage() {
   const [contest, setContest] = useState<Contest | null>(null)
   const [leaderboard, setLeaderboard] = useState<{ rank: number; user: { id: string; name?: string | null; image?: string | null; points: number }; score: number; solvedProblems: { problem: { label: string; title: string } }[] }[]>([])
   const [answers, setAnswers] = useState<Record<string, string>>({})
+  const [parts, setParts] = useState<Record<string, string[]>>({})
   const [submitting, setSubmitting] = useState<string | null>(null)
   const [timeLeft, setTimeLeft] = useState<number | null>(null)
   const [loading, setLoading] = useState(true)
@@ -45,8 +47,12 @@ export default function ContestPage() {
   const [uploadingProblem, setUploadingProblem] = useState<string | null>(null)
   const [editPreview, setEditPreview] = useState(false)
   const [editingInfo, setEditingInfo] = useState(false)
-  const [infoDraft, setInfoDraft] = useState({ title: '', description: '', rules: '', contribs: [] as { query: string; role: 'CONTRIBUTOR' | 'REVIEWER' }[] })
+  const [infoDraft, setInfoDraft] = useState({ title: '', description: '', rules: '', contribs: [] as { userId: string; query: string; role: 'CONTRIBUTOR' | 'REVIEWER' }[] })
   const [savingInfo, setSavingInfo] = useState(false)
+  const [addingProblem, setAddingProblem] = useState(false)
+  const [newProblem, setNewProblem] = useState({ title: '', content: '', answer: '', extraAnswers: [] as string[], subAnswers: [{ label: '(1)', answer: '', extra: [] as string[] }] as SubAnswerDef[], multiPartMode: false, points: 100, allowRetry: true })
+  const [savingNewProblem, setSavingNewProblem] = useState(false)
+  const [deletingProblem, setDeletingProblem] = useState<string | null>(null)
   const [newContribQuery, setNewContribQuery] = useState('')
   const [newContribRole, setNewContribRole] = useState<'CONTRIBUTOR' | 'REVIEWER'>('CONTRIBUTOR')
   const fileInputRef = useRef<HTMLInputElement>(null)
@@ -100,20 +106,28 @@ export default function ContestPage() {
     else toast.error((await res.json()).error)
   }
 
-  async function handleSubmit(problemId: string) {
-    const answer = answers[problemId]?.trim()
-    if (!answer) { toast.error('답을 입력해주세요'); return }
+  async function handleSubmit(problemId: string, isMultiPart: boolean) {
+    if (isMultiPart) {
+      const myParts = parts[problemId] ?? []
+      if (myParts.some((p) => !p?.trim())) { toast.error('모든 칸을 입력해주세요'); return }
+    } else {
+      const answer = answers[problemId]?.trim()
+      if (!answer) { toast.error('답을 입력해주세요'); return }
+    }
     setSubmitting(problemId)
     try {
+      const body = isMultiPart
+        ? { problemId, parts: parts[problemId] ?? [] }
+        : { problemId, answer: answers[problemId] }
       const res = await fetch(`/api/contests/${id}/submit`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ problemId, answer }),
+        body: JSON.stringify(body),
       })
       const data = await res.json()
       if (!res.ok) { toast.error(data.error); return }
       if (data.correct) {
-        toast.success('정답입니다!')
+        toast.success(data.scoreBlocked ? '정답! (출제자는 점수 미반영)' : '정답입니다!')
         setContest((c) => c ? { ...c, mySubmissions: { ...c.mySubmissions, [problemId]: true } } : c)
       } else {
         toast.error('오답입니다. 다시 시도해보세요')
@@ -148,10 +162,55 @@ export default function ContestPage() {
         }),
       })
       if (!res.ok) { toast.error((await res.json()).error ?? '오류'); return }
+      const updated = await res.json()
+      // 응답에 contributors 포함되어 있으므로 즉시 state 반영 (버튼 사라짐 방지)
+      if (updated && updated.contributors) setContest((c) => c ? { ...c, ...updated } : c)
       toast.success('대회 정보가 수정되었습니다')
       setEditingInfo(false)
       load()
     } finally { setSavingInfo(false) }
+  }
+
+  async function addProblem() {
+    if (!newProblem.title.trim() || !newProblem.content.trim()) {
+      toast.error('제목과 내용을 모두 입력해주세요'); return
+    }
+    if (newProblem.multiPartMode) {
+      if (newProblem.subAnswers.length === 0 || newProblem.subAnswers.some((s) => !s.answer.trim())) {
+        toast.error('모든 답변 슬롯에 정답을 입력해주세요'); return
+      }
+    } else if (!newProblem.answer.trim()) {
+      toast.error('정답을 입력해주세요'); return
+    }
+    setSavingNewProblem(true)
+    try {
+      const body = {
+        ...newProblem,
+        answer: newProblem.multiPartMode ? '[multi-part]' : newProblem.answer,
+        subAnswers: newProblem.multiPartMode ? newProblem.subAnswers : [],
+      }
+      const res = await fetch(`/api/contests/${id}/problems`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      })
+      if (!res.ok) { toast.error((await res.json()).error ?? '오류'); return }
+      toast.success('문제가 추가되었습니다')
+      setNewProblem({ title: '', content: '', answer: '', extraAnswers: [], subAnswers: [{ label: '(1)', answer: '', extra: [] }], multiPartMode: false, points: 100, allowRetry: true })
+      setAddingProblem(false)
+      load()
+    } finally { setSavingNewProblem(false) }
+  }
+
+  async function deleteProblem(problemId: string) {
+    if (!confirm('문제를 삭제하시겠습니까?')) return
+    setDeletingProblem(problemId)
+    try {
+      const res = await fetch(`/api/contests/${id}/problems/${problemId}`, { method: 'DELETE' })
+      if (!res.ok) { toast.error((await res.json()).error ?? '오류'); return }
+      toast.success('문제가 삭제되었습니다')
+      load()
+    } finally { setDeletingProblem(null) }
   }
 
   async function saveProblemEdit(problemId: string) {
@@ -281,7 +340,7 @@ export default function ContestPage() {
                   onChange={(e) => setNewContribQuery(e.target.value)}
                   onKeyDown={(e) => {
                     if (e.key === 'Enter' && newContribQuery.trim()) {
-                      setInfoDraft((d) => ({ ...d, contribs: [...d.contribs, { query: newContribQuery.trim(), role: newContribRole }] }))
+                      setInfoDraft((d) => ({ ...d, contribs: [...d.contribs, { userId: '', query: newContribQuery.trim(), role: newContribRole }] }))
                       setNewContribQuery('')
                     }
                   }}
@@ -295,7 +354,7 @@ export default function ContestPage() {
                 </select>
                 <button type="button" onClick={() => {
                   if (!newContribQuery.trim()) return
-                  setInfoDraft((d) => ({ ...d, contribs: [...d.contribs, { query: newContribQuery.trim(), role: newContribRole }] }))
+                  setInfoDraft((d) => ({ ...d, contribs: [...d.contribs, { userId: '', query: newContribQuery.trim(), role: newContribRole }] }))
                   setNewContribQuery('')
                 }} className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg border border-border text-xs text-text-secondary hover:text-text-primary transition-colors">
                   <UserPlus size={12} /> 추가
@@ -339,7 +398,7 @@ export default function ContestPage() {
                         title: contest.title,
                         description: contest.description ?? '',
                         rules: contest.rules ?? '',
-                        contribs: contest.contributors.map((c) => ({ query: c.user.name ?? '', role: c.role as 'CONTRIBUTOR' | 'REVIEWER' })),
+                        contribs: contest.contributors.map((c) => ({ userId: c.userId, query: c.user.name ?? c.userId, role: c.role as 'CONTRIBUTOR' | 'REVIEWER' })),
                       })
                       setEditingInfo(true)
                     }}
@@ -441,9 +500,15 @@ export default function ContestPage() {
                   <div className="flex items-center gap-2">
                     {solved && <CheckCircle size={20} className="text-green-500 shrink-0" />}
                     {canEditProblems && !isEditing && (
-                      <button onClick={() => { setEditingProblem(problem.id); setEditDraft({ title: problem.title, content: problem.content, answer: problem.answer ?? '', extraAnswers: problem.extraAnswers ?? [], points: problem.points, label: problem.label, imageUrls: problem.imageUrls ?? [], allowRetry: problem.allowRetry !== false }) }}
+                      <button onClick={() => { setEditingProblem(problem.id); setEditDraft({ title: problem.title, content: problem.content, answer: problem.answer ?? '', extraAnswers: problem.extraAnswers ?? [], subAnswers: problem.subAnswers ?? [], points: problem.points, label: problem.label, imageUrls: problem.imageUrls ?? [], allowRetry: problem.allowRetry !== false }) }}
                         className="p-1.5 rounded-lg hover:bg-surface-2 text-muted hover:text-text-secondary transition-colors">
                         <Pencil size={14} />
+                      </button>
+                    )}
+                    {(isOrganizer || isAdmin) && !isEditing && !['ONGOING', 'ENDED'].includes(contest.status) && (
+                      <button onClick={() => deleteProblem(problem.id)} disabled={deletingProblem === problem.id}
+                        className="p-1.5 rounded-lg hover:bg-surface-2 text-muted hover:text-red-400 transition-colors disabled:opacity-50">
+                        <Trash2 size={14} />
                       </button>
                     )}
                     {isEditing && (
@@ -493,25 +558,63 @@ export default function ContestPage() {
                           rows={6} className="w-full bg-background border border-border rounded-lg px-3 py-2 text-sm text-text-primary focus:outline-none focus:border-accent resize-y font-mono" />
                       )}
                     </div>
-                    <div>
-                      <label className="text-xs text-muted mb-1 block">정답</label>
-                      <div className="space-y-2">
-                        <input value={editDraft.answer ?? ''} onChange={(e) => setEditDraft((d) => ({ ...d, answer: e.target.value }))}
-                          placeholder="정답 1 (필수)"
-                          className="w-full bg-background border border-border rounded-lg px-3 py-1.5 text-sm text-text-primary focus:outline-none focus:border-accent" />
-                        {(editDraft.extraAnswers ?? []).map((ea, ei) => (
-                          <div key={ei} className="flex gap-2">
-                            <input value={ea}
-                              onChange={(e) => { const next = [...(editDraft.extraAnswers ?? [])]; next[ei] = e.target.value; setEditDraft((d) => ({ ...d, extraAnswers: next })) }}
-                              placeholder={`정답 ${ei + 2}`}
-                              className="flex-1 bg-background border border-border rounded-lg px-3 py-1.5 text-sm text-text-primary focus:outline-none focus:border-accent" />
-                            <button type="button" onClick={() => setEditDraft((d) => ({ ...d, extraAnswers: (d.extraAnswers ?? []).filter((_, k) => k !== ei) }))} className="text-muted hover:text-red-400"><X size={12} /></button>
-                          </div>
-                        ))}
-                        <button type="button" onClick={() => setEditDraft((d) => ({ ...d, extraAnswers: [...(d.extraAnswers ?? []), ''] }))} className="flex items-center gap-1 text-xs text-text-secondary hover:text-accent transition-colors">
-                          <Plus size={11} /> 정답 추가
+                    <div className="space-y-2">
+                      {/* 정답 모드 토글 */}
+                      <div className="flex items-center gap-3">
+                        <label className="text-xs text-muted">정답</label>
+                        <button type="button"
+                          onClick={() => setEditDraft((d) => ({
+                            ...d,
+                            subAnswers: (d.subAnswers?.length ?? 0) > 0 ? [] : [{ label: '(1)', answer: '', extra: [] }],
+                            answer: (d.subAnswers?.length ?? 0) > 0 ? (d.answer === '[multi-part]' ? '' : d.answer) : '[multi-part]',
+                          }))}
+                          className={`flex items-center gap-1 px-2 py-1 rounded text-xs font-medium border transition-colors ${(editDraft.subAnswers?.length ?? 0) > 0 ? 'bg-accent/10 text-accent border-accent/30' : 'text-text-secondary border-border hover:border-accent/30 hover:text-accent'}`}>
+                          {(editDraft.subAnswers?.length ?? 0) > 0 ? '다중 필수 답변' : '단일 답변'}
                         </button>
                       </div>
+                      {(editDraft.subAnswers?.length ?? 0) === 0 ? (
+                        <div className="space-y-2">
+                          <input value={editDraft.answer ?? ''} onChange={(e) => setEditDraft((d) => ({ ...d, answer: e.target.value }))}
+                            placeholder="정답 (대소문자·공백 무시)"
+                            className="w-full bg-background border border-border rounded-lg px-3 py-1.5 text-sm text-text-primary focus:outline-none focus:border-accent" />
+                          {(editDraft.extraAnswers ?? []).map((ea, ei) => (
+                            <div key={ei} className="flex gap-2">
+                              <input value={ea}
+                                onChange={(e) => { const next = [...(editDraft.extraAnswers ?? [])]; next[ei] = e.target.value; setEditDraft((d) => ({ ...d, extraAnswers: next })) }}
+                                placeholder={`허용 정답 ${ei + 2}`}
+                                className="flex-1 bg-background border border-border rounded-lg px-3 py-1.5 text-sm text-text-primary focus:outline-none focus:border-accent" />
+                              <button type="button" onClick={() => setEditDraft((d) => ({ ...d, extraAnswers: (d.extraAnswers ?? []).filter((_, k) => k !== ei) }))} className="text-muted hover:text-red-400"><X size={12} /></button>
+                            </div>
+                          ))}
+                          <button type="button" onClick={() => setEditDraft((d) => ({ ...d, extraAnswers: [...(d.extraAnswers ?? []), ''] }))} className="flex items-center gap-1 text-xs text-text-secondary hover:text-accent transition-colors">
+                            <Plus size={11} /> 허용 정답 추가
+                          </button>
+                        </div>
+                      ) : (
+                        <div className="space-y-2 p-3 bg-accent/5 border border-accent/20 rounded-xl">
+                          <p className="text-xs text-muted">모든 슬롯을 정확히 입력해야 정답 처리됩니다</p>
+                          {(editDraft.subAnswers ?? []).map((sub, si) => (
+                            <div key={si} className="flex gap-2 items-center">
+                              <input value={sub.label}
+                                onChange={(e) => { const next = (editDraft.subAnswers ?? []).map((s, k) => k === si ? { ...s, label: e.target.value } : s); setEditDraft((d) => ({ ...d, subAnswers: next })) }}
+                                placeholder="레이블"
+                                className="w-16 bg-background border border-border rounded px-2 py-1.5 text-xs text-text-primary focus:outline-none focus:border-accent" />
+                              <input value={sub.answer}
+                                onChange={(e) => { const next = (editDraft.subAnswers ?? []).map((s, k) => k === si ? { ...s, answer: e.target.value } : s); setEditDraft((d) => ({ ...d, subAnswers: next })) }}
+                                placeholder="정답"
+                                className="flex-1 bg-background border border-border rounded px-2 py-1.5 text-sm text-text-primary focus:outline-none focus:border-accent" />
+                              {(editDraft.subAnswers ?? []).length > 1 && (
+                                <button type="button" onClick={() => setEditDraft((d) => ({ ...d, subAnswers: (d.subAnswers ?? []).filter((_, k) => k !== si) }))} className="text-muted hover:text-red-400"><X size={12} /></button>
+                              )}
+                            </div>
+                          ))}
+                          <button type="button"
+                            onClick={() => setEditDraft((d) => ({ ...d, subAnswers: [...(d.subAnswers ?? []), { label: `(${(d.subAnswers ?? []).length + 1})`, answer: '', extra: [] }] }))}
+                            className="flex items-center gap-1 text-xs text-text-secondary hover:text-accent transition-colors">
+                            <Plus size={11} /> 슬롯 추가
+                          </button>
+                        </div>
+                      )}
                     </div>
                     <div>
                       <label className="text-xs text-muted mb-1 block">이미지</label>
@@ -570,9 +673,19 @@ export default function ContestPage() {
                     </div>
                     {problem.imageUrls && problem.imageUrls.length > 0 && (
                       <div className="flex flex-wrap gap-2">
-                        {problem.imageUrls.map((url) => (
-                          // eslint-disable-next-line @next/next/no-img-element
-                          <img key={url} src={url} alt="" className="max-h-48 rounded-lg border border-border object-contain" />
+                        {problem.imageUrls.map((url: string) => (
+                          <div key={url} className="relative group inline-block">
+                            {/* eslint-disable-next-line @next/next/no-img-element */}
+                            <img src={url} alt="" className="max-h-24 rounded-lg border border-border object-contain cursor-pointer hover:opacity-90 transition-opacity" onClick={() => window.open(url, '_blank')} />
+                            <a
+                              href={url}
+                              download
+                              className="absolute bottom-1 right-1 w-5 h-5 bg-black/60 text-white rounded flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
+                              title="다운로드"
+                            >
+                              <Download size={10} />
+                            </a>
+                          </div>
                         ))}
                       </div>
                     )}
@@ -582,35 +695,178 @@ export default function ContestPage() {
                         <ImagePlus size={12} /> {uploadingProblem === problem.id ? '업로드 중...' : '이미지 추가'}
                       </button>
                     )}
-                    {(isOrganizer || isAdmin || isContributor) && problem.answer && (
-                      <p className="text-xs text-muted">정답: <span className="font-mono text-accent">{problem.answer}</span>
-                        {problem.extraAnswers && problem.extraAnswers.length > 0 && (
-                          <span className="ml-1">, {problem.extraAnswers.join(', ')}</span>
-                        )}
-                      </p>
+                    {(isOrganizer || isAdmin || isContributor) && (
+                      <div className="text-xs text-muted">
+                        {problem.subAnswers && problem.subAnswers.length > 0 ? (
+                          <div className="space-y-0.5">
+                            <span className="font-medium">정답:</span>
+                            {problem.subAnswers.map((sub, si) => (
+                              <p key={si}><span className="font-medium">{sub.label}:</span> <span className="font-mono text-accent">{sub.answer}</span>{sub.extra && sub.extra.length > 0 && <span className="ml-1 text-muted">({sub.extra.join(', ')})</span>}</p>
+                            ))}
+                          </div>
+                        ) : problem.answer && problem.answer !== '[multi-part]' ? (
+                          <p>정답: <span className="font-mono text-accent">{problem.answer}</span>
+                            {problem.extraAnswers && problem.extraAnswers.length > 0 && <span className="ml-1">, {problem.extraAnswers.join(', ')}</span>}
+                          </p>
+                        ) : null}
+                      </div>
                     )}
                   </div>
                 )}
-                {contest.status === 'ONGOING' && isParticipant && !solved && !isEditing && (
-                  <div className="flex gap-2 pt-2 border-t border-border">
-                    <input
-                      value={answers[problem.id] ?? ''}
-                      onChange={(e) => setAnswers((a) => ({ ...a, [problem.id]: e.target.value }))}
-                      onKeyDown={(e) => e.key === 'Enter' && handleSubmit(problem.id)}
-                      placeholder="정답 입력 후 Enter"
-                      className="flex-1 bg-background border border-border rounded-lg px-3 py-2 text-sm text-text-primary focus:outline-none focus:border-accent"
-                    />
-                    <button onClick={() => handleSubmit(problem.id)} disabled={submitting === problem.id}
-                      className="px-4 py-2 rounded-lg bg-accent text-white text-sm font-semibold hover:bg-accent-dim transition-colors disabled:opacity-50">
-                      {submitting === problem.id ? '...' : '제출'}
-                    </button>
-                  </div>
-                )}
+                {contest.status === 'ONGOING' && isParticipant && !solved && !isEditing && (() => {
+                  const subDefs = problem.subAnswers ?? []
+                  const isMultiPart = subDefs.length > 0
+                  return (
+                    <div className="pt-2 border-t border-border space-y-2">
+                      {isMultiPart ? (
+                        <>
+                          {subDefs.map((def, di) => (
+                            <div key={di} className="flex items-center gap-2">
+                              <span className="text-xs font-medium text-text-secondary w-10 shrink-0">{def.label}</span>
+                              <input
+                                value={(parts[problem.id] ?? [])[di] ?? ''}
+                                onChange={(e) => {
+                                  const next = [...(parts[problem.id] ?? Array(subDefs.length).fill(''))]
+                                  next[di] = e.target.value
+                                  setParts((p) => ({ ...p, [problem.id]: next }))
+                                }}
+                                placeholder={`${def.label} 답 입력`}
+                                className="flex-1 bg-background border border-border rounded-lg px-3 py-2 text-sm text-text-primary focus:outline-none focus:border-accent"
+                              />
+                            </div>
+                          ))}
+                          <button
+                            onClick={() => handleSubmit(problem.id, true)}
+                            disabled={submitting === problem.id || (parts[problem.id] ?? []).length !== subDefs.length || (parts[problem.id] ?? []).some((p) => !p?.trim())}
+                            className="w-full px-4 py-2 rounded-lg bg-accent text-white text-sm font-semibold hover:bg-accent-dim transition-colors disabled:opacity-50"
+                          >
+                            {submitting === problem.id ? '...' : '모두 제출'}
+                          </button>
+                        </>
+                      ) : (
+                        <div className="flex gap-2">
+                          <input
+                            value={answers[problem.id] ?? ''}
+                            onChange={(e) => setAnswers((a) => ({ ...a, [problem.id]: e.target.value }))}
+                            onKeyDown={(e) => e.key === 'Enter' && handleSubmit(problem.id, false)}
+                            placeholder="정답 입력 후 Enter"
+                            className="flex-1 bg-background border border-border rounded-lg px-3 py-2 text-sm text-text-primary focus:outline-none focus:border-accent"
+                          />
+                          <button onClick={() => handleSubmit(problem.id, false)} disabled={submitting === problem.id}
+                            className="px-4 py-2 rounded-lg bg-accent text-white text-sm font-semibold hover:bg-accent-dim transition-colors disabled:opacity-50">
+                            {submitting === problem.id ? '...' : '제출'}
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  )
+                })()}
                 {solved && <div className="flex items-center gap-1 text-green-600 text-sm"><CheckCircle size={14} /> 정답!</div>}
               </div>
             )
           })}
-          {contest.problems.length === 0 && <div className="text-center py-8 text-text-secondary text-sm">문제가 없습니다</div>}
+          {contest.problems.length === 0 && !addingProblem && <div className="text-center py-8 text-text-secondary text-sm">문제가 없습니다</div>}
+
+          {/* Add Problem form */}
+          {addingProblem && (
+            <div className="bg-surface border border-accent/30 rounded-2xl p-5 space-y-3">
+              <div className="flex items-center justify-between">
+                <span className="text-sm font-bold text-accent">새 문제 추가</span>
+                <button onClick={() => setAddingProblem(false)} className="text-muted hover:text-text-secondary"><X size={14} /></button>
+              </div>
+              <div className="flex gap-2">
+                <div className="flex-1">
+                  <label className="text-xs text-muted mb-1 block">제목</label>
+                  <input value={newProblem.title} onChange={(e) => setNewProblem((d) => ({ ...d, title: e.target.value }))}
+                    placeholder="문제 제목"
+                    className="w-full bg-background border border-border rounded-lg px-3 py-1.5 text-sm text-text-primary focus:outline-none focus:border-accent" />
+                </div>
+                <div className="w-20">
+                  <label className="text-xs text-muted mb-1 block">점수</label>
+                  <input type="number" value={newProblem.points} onChange={(e) => setNewProblem((d) => ({ ...d, points: parseInt(e.target.value) || 0 }))}
+                    className="w-full bg-background border border-border rounded-lg px-2 py-1.5 text-sm text-text-primary focus:outline-none focus:border-accent" />
+                </div>
+              </div>
+              <div>
+                <label className="text-xs text-muted mb-1 block">내용 (마크다운)</label>
+                <textarea value={newProblem.content} onChange={(e) => setNewProblem((d) => ({ ...d, content: e.target.value }))}
+                  rows={5} placeholder="문제 내용..."
+                  className="w-full bg-background border border-border rounded-lg px-3 py-2 text-sm text-text-primary focus:outline-none focus:border-accent resize-y font-mono" />
+              </div>
+              <div className="space-y-2">
+                <div className="flex items-center gap-3">
+                  <label className="text-xs text-muted">정답</label>
+                  <button type="button"
+                    onClick={() => setNewProblem((d) => ({ ...d, multiPartMode: !d.multiPartMode }))}
+                    className={`flex items-center gap-1 px-2 py-1 rounded text-xs font-medium border transition-colors ${newProblem.multiPartMode ? 'bg-accent/10 text-accent border-accent/30' : 'text-text-secondary border-border hover:border-accent/30 hover:text-accent'}`}>
+                    {newProblem.multiPartMode ? '다중 필수 답변' : '단일 답변'}
+                  </button>
+                </div>
+                {!newProblem.multiPartMode ? (
+                  <div className="space-y-2">
+                    <input value={newProblem.answer} onChange={(e) => setNewProblem((d) => ({ ...d, answer: e.target.value }))}
+                      placeholder="정답 (대소문자·공백 무시)"
+                      className="w-full bg-background border border-border rounded-lg px-3 py-1.5 text-sm text-text-primary focus:outline-none focus:border-accent" />
+                    {newProblem.extraAnswers.map((ea, ei) => (
+                      <div key={ei} className="flex gap-2">
+                        <input value={ea}
+                          onChange={(e) => { const next = [...newProblem.extraAnswers]; next[ei] = e.target.value; setNewProblem((d) => ({ ...d, extraAnswers: next })) }}
+                          placeholder={`허용 정답 ${ei + 2}`}
+                          className="flex-1 bg-background border border-border rounded-lg px-3 py-1.5 text-sm text-text-primary focus:outline-none focus:border-accent" />
+                        <button type="button" onClick={() => setNewProblem((d) => ({ ...d, extraAnswers: d.extraAnswers.filter((_, k) => k !== ei) }))} className="text-muted hover:text-red-400"><X size={12} /></button>
+                      </div>
+                    ))}
+                    <button type="button" onClick={() => setNewProblem((d) => ({ ...d, extraAnswers: [...d.extraAnswers, ''] }))} className="flex items-center gap-1 text-xs text-text-secondary hover:text-accent transition-colors">
+                      <Plus size={11} /> 허용 정답 추가
+                    </button>
+                  </div>
+                ) : (
+                  <div className="space-y-2 p-3 bg-accent/5 border border-accent/20 rounded-xl">
+                    <p className="text-xs text-muted">모든 슬롯을 정확히 입력해야 정답 처리됩니다</p>
+                    {newProblem.subAnswers.map((sub, si) => (
+                      <div key={si} className="flex gap-2 items-center">
+                        <input value={sub.label}
+                          onChange={(e) => { const next = newProblem.subAnswers.map((s, k) => k === si ? { ...s, label: e.target.value } : s); setNewProblem((d) => ({ ...d, subAnswers: next })) }}
+                          placeholder="레이블"
+                          className="w-16 bg-background border border-border rounded px-2 py-1.5 text-xs text-text-primary focus:outline-none focus:border-accent" />
+                        <input value={sub.answer}
+                          onChange={(e) => { const next = newProblem.subAnswers.map((s, k) => k === si ? { ...s, answer: e.target.value } : s); setNewProblem((d) => ({ ...d, subAnswers: next })) }}
+                          placeholder="정답"
+                          className="flex-1 bg-background border border-border rounded px-2 py-1.5 text-sm text-text-primary focus:outline-none focus:border-accent" />
+                        {newProblem.subAnswers.length > 1 && (
+                          <button type="button" onClick={() => setNewProblem((d) => ({ ...d, subAnswers: d.subAnswers.filter((_, k) => k !== si) }))} className="text-muted hover:text-red-400"><X size={12} /></button>
+                        )}
+                      </div>
+                    ))}
+                    <button type="button"
+                      onClick={() => setNewProblem((d) => ({ ...d, subAnswers: [...d.subAnswers, { label: `(${d.subAnswers.length + 1})`, answer: '', extra: [] }] }))}
+                      className="flex items-center gap-1 text-xs text-text-secondary hover:text-accent transition-colors">
+                      <Plus size={11} /> 슬롯 추가
+                    </button>
+                  </div>
+                )}
+              </div>
+              <div className="flex items-center justify-between pt-1">
+                <button type="button" onClick={() => setNewProblem((d) => ({ ...d, allowRetry: !d.allowRetry }))}
+                  className={`flex items-center gap-1 px-2 py-1 rounded text-xs transition-colors ${newProblem.allowRetry ? 'text-green-600 bg-green-50 border border-green-200' : 'text-red-500 bg-red-50 border border-red-200'}`}>
+                  {newProblem.allowRetry ? <><RefreshCw size={10} /> 재시도 허용</> : <><Ban size={10} /> 재시도 불가</>}
+                </button>
+                <button onClick={addProblem} disabled={savingNewProblem}
+                  className="flex items-center gap-1.5 px-4 py-2 rounded-lg bg-accent text-white text-sm font-semibold hover:bg-accent-dim transition-colors disabled:opacity-50">
+                  <Plus size={13} /> {savingNewProblem ? '추가 중...' : '문제 추가'}
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* Add problem button */}
+          {canEditProblems && !addingProblem && (
+            <button onClick={() => setAddingProblem(true)}
+              className="w-full flex items-center justify-center gap-2 py-3 rounded-xl border-2 border-dashed border-border hover:border-accent hover:text-accent text-text-secondary text-sm transition-colors">
+              <Plus size={14} /> 문제 추가
+            </button>
+          )}
+
           {/* hidden file input for problem image upload */}
           <input ref={fileInputRef} type="file" accept="image/*" className="hidden"
             onChange={(e) => {

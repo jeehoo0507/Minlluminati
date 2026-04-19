@@ -12,12 +12,18 @@ async function getLikePoints(): Promise<number> {
   return POINTS.LIKE_RECEIVED
 }
 
+function resolvePostWhere(rawId: string) {
+  return /^\d+$/.test(rawId)
+    ? { postNumber: parseInt(rawId), deletedAt: null as null }
+    : { id: rawId, deletedAt: null as null }
+}
+
 export async function POST(_: NextRequest, { params }: { params: { id: string } }) {
   const session = await getAuth()
   if (!session?.user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
-  const post = await prisma.post.findUnique({
-    where: { id: params.id, deletedAt: null },
+  const post = await prisma.post.findFirst({
+    where: resolvePostWhere(params.id),
     select: { id: true, authorId: true, subject: true },
   })
   if (!post) return NextResponse.json({ error: 'Not found' }, { status: 404 })
@@ -26,37 +32,43 @@ export async function POST(_: NextRequest, { params }: { params: { id: string } 
   }
 
   const existing = await prisma.like.findUnique({
-    where: { userId_postId: { userId: session.user.id, postId: params.id } },
+    where: { userId_postId: { userId: session.user.id, postId: post.id } },
   })
 
   const likePoints = await getLikePoints()
 
   if (existing) {
     await prisma.like.delete({
-      where: { userId_postId: { userId: session.user.id, postId: params.id } },
+      where: { userId_postId: { userId: session.user.id, postId: post.id } },
     })
-    await revokeLikePoints(post.authorId, params.id, post.subject, likePoints)
-    const count = await prisma.like.count({ where: { postId: params.id } })
+    await revokeLikePoints(post.authorId, post.id, post.subject, likePoints)
+    const count = await prisma.like.count({ where: { postId: post.id } })
     return NextResponse.json({ liked: false, count, likePoints })
   } else {
     await prisma.like.create({
-      data: { userId: session.user.id, postId: params.id },
+      data: { userId: session.user.id, postId: post.id },
     })
-    await awardLikePoints(post.authorId, params.id, post.subject, likePoints)
-    const count = await prisma.like.count({ where: { postId: params.id } })
+    await awardLikePoints(post.authorId, post.id, post.subject, likePoints)
+    const count = await prisma.like.count({ where: { postId: post.id } })
     return NextResponse.json({ liked: true, count, likePoints })
   }
 }
 
 export async function GET(req: NextRequest, { params }: { params: { id: string } }) {
   const session = await getAuth()
+  const post = await prisma.post.findFirst({
+    where: resolvePostWhere(params.id),
+    select: { id: true },
+  })
+  if (!post) return NextResponse.json({ liked: false, count: 0, likePoints: await getLikePoints() })
+
   const [count, likePoints] = await Promise.all([
-    prisma.like.count({ where: { postId: params.id } }),
+    prisma.like.count({ where: { postId: post.id } }),
     getLikePoints(),
   ])
   const liked = session?.user
     ? !!(await prisma.like.findUnique({
-        where: { userId_postId: { userId: session.user.id, postId: params.id } },
+        where: { userId_postId: { userId: session.user.id, postId: post.id } },
       }))
     : false
   return NextResponse.json({ liked, count, likePoints })

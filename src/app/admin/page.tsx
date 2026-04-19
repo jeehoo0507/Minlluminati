@@ -72,6 +72,7 @@ export default function AdminPage() {
   const [noticeTitle, setNoticeTitle] = useState('')
   const [noticeContent, setNoticeContent] = useState('')
   const [noticeSending, setNoticeSending] = useState(false)
+  const [allGroups, setAllGroups] = useState<{ id: string; name: string; isPublic: boolean; createdAt: string; owner: { id: string; name?: string | null; email: string }; _count: { members: number; posts: number } }[]>([])
 
   useEffect(() => {
     if (status === 'loading') return
@@ -109,6 +110,29 @@ export default function AdminPage() {
   async function loadAllowedEmails() {
     const res = await fetch('/api/admin/allowed-emails')
     if (res.ok) setAllowedEmails(await res.json())
+  }
+
+  async function loadAllGroups() {
+    const res = await fetch('/api/admin/groups')
+    if (res.ok) setAllGroups(await res.json())
+  }
+
+  function confirmDeleteGroup(group: { id: string; name: string }) {
+    setConfirmAction({
+      title: `그룹 삭제: "${group.name}"`,
+      description: '그룹과 모든 게시글, 채팅, 멤버 데이터가 삭제됩니다.',
+      onConfirm: async (pw) => {
+        const res = await fetch('/api/admin/groups', {
+          method: 'DELETE', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ id: group.id, adminPassword: pw }),
+        })
+        const data = await res.json()
+        if (!res.ok) throw new Error(data.error)
+        setAllGroups((p) => p.filter((g) => g.id !== group.id))
+        toast.success('그룹 삭제 완료')
+        setConfirmAction(null)
+      },
+    })
   }
 
   async function deleteAllowedEmail(id: string) {
@@ -391,6 +415,7 @@ export default function AdminPage() {
     { key: 'organizers', label: '대회 권한' },
     { key: 'posts', label: '게시글 관리' },
     { key: 'allcontests', label: '대회 관리' },
+    { key: 'groups', label: `그룹 관리${allGroups.length > 0 ? ` (${allGroups.length})` : ''}` },
     { key: 'tiers', label: '티어 설정' },
     { key: 'daily', label: '일일 현황' },
     { key: 'notice', label: '공지 발송' },
@@ -424,6 +449,7 @@ export default function AdminPage() {
               setTab(key)
               if (key === 'posts' && posts.length === 0) loadPosts()
               if (key === 'allcontests' && contests.length === 0) loadContests()
+              if (key === 'groups') loadAllGroups()
               if (key === 'requests') loadPermRequests()
               if (key === 'tiers') loadTierConfig()
               if (key === 'daily') loadDailyStatus()
@@ -825,6 +851,55 @@ export default function AdminPage() {
                     <td className="px-4 py-3">
                       <div className="flex justify-end">
                         <button onClick={() => confirmDeleteContest(c)} className="p-1.5 rounded-lg text-muted hover:text-red-400 hover:bg-red-400/10 transition-colors">
+                          <Trash2 size={14} />
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+        </div>
+      )}
+
+      {/* Group management */}
+      {tab === 'groups' && (
+        <div className="bg-surface border border-border rounded-2xl overflow-hidden">
+          <div className="px-4 py-3 border-b border-border bg-surface-2 flex items-center justify-between">
+            <span className="text-sm font-semibold text-text-primary">전체 그룹 목록</span>
+            <button onClick={loadAllGroups} className="text-xs text-muted hover:text-text-primary transition-colors">새로고침</button>
+          </div>
+          {allGroups.length === 0 ? (
+            <div className="text-center py-12 text-text-secondary text-sm">그룹 없음</div>
+          ) : (
+            <table className="w-full text-sm">
+              <thead><tr className="border-b border-border bg-surface-2">
+                <th className="text-left px-4 py-3 text-xs font-semibold text-text-secondary">그룹명</th>
+                <th className="text-left px-4 py-3 text-xs font-semibold text-text-secondary">공개</th>
+                <th className="text-left px-4 py-3 text-xs font-semibold text-text-secondary">소유자</th>
+                <th className="text-left px-4 py-3 text-xs font-semibold text-text-secondary hidden md:table-cell">멤버/글</th>
+                <th className="text-left px-4 py-3 text-xs font-semibold text-text-secondary hidden md:table-cell">생성일</th>
+                <th className="text-right px-4 py-3 text-xs font-semibold text-text-secondary">삭제</th>
+              </tr></thead>
+              <tbody>
+                {allGroups.map((g) => (
+                  <tr key={g.id} className="border-b border-border last:border-0 hover:bg-surface-2 transition-colors">
+                    <td className="px-4 py-3">
+                      <div className="flex items-center gap-1.5">
+                        <span className="font-medium text-text-primary">{g.name}</span>
+                        {!g.isPublic && (
+                          <span className="text-xs px-1.5 py-0.5 bg-yellow-50 text-yellow-700 border border-yellow-200 rounded">비공개</span>
+                        )}
+                      </div>
+                    </td>
+                    <td className="px-4 py-3 text-xs text-muted">{g.isPublic ? '공개' : '비공개'}</td>
+                    <td className="px-4 py-3 text-xs text-text-secondary">{g.owner.name ?? g.owner.email}</td>
+                    <td className="px-4 py-3 text-xs text-muted hidden md:table-cell">{g._count.members}명 · {g._count.posts}글</td>
+                    <td className="px-4 py-3 text-xs text-muted hidden md:table-cell">{timeAgo(g.createdAt)}</td>
+                    <td className="px-4 py-3">
+                      <div className="flex justify-end">
+                        <button onClick={() => confirmDeleteGroup(g)} className="p-1.5 rounded-lg text-muted hover:text-red-400 hover:bg-red-400/10 transition-colors">
                           <Trash2 size={14} />
                         </button>
                       </div>

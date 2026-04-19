@@ -17,6 +17,7 @@ interface ProfileData {
   streakMap: Record<string, number>
   pointTimeline: { month: string; points: number }[]
   radarData: { label: string; value: number }[]
+  solvedProblems: { id: string; problemNumber: number; title: string; subject: string | null }[]
 }
 
 export default function ProfilePage() {
@@ -198,6 +199,27 @@ export default function ProfilePage() {
           <div className="border-t border-border pt-4">
             <p className="text-xs text-text-secondary mb-2 font-medium">포인트 변화</p>
             <PointLineChart data={profileData.pointTimeline} />
+          </div>
+          <div className="border-t border-border pt-4">
+            <p className="text-xs text-text-secondary mb-2 font-medium">
+              푼 문제 <span className="text-muted font-normal">({profileData.solvedProblems.length})</span>
+            </p>
+            {profileData.solvedProblems.length === 0 ? (
+              <p className="text-xs text-muted py-2">아직 푼 문제가 없습니다</p>
+            ) : (
+              <div className="flex flex-wrap gap-1.5">
+                {profileData.solvedProblems.map((p) => (
+                  <Link
+                    key={p.id}
+                    href={`/problems/${p.id}`}
+                    className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs bg-emerald-500/10 text-emerald-500 hover:bg-emerald-500/20 transition-colors border border-emerald-500/20"
+                  >
+                    <span className="font-mono font-semibold">#{p.problemNumber}</span>
+                    <span className="text-emerald-400/80 truncate max-w-[120px]">{p.title}</span>
+                  </Link>
+                ))}
+              </div>
+            )}
           </div>
           <div className="border-t border-border pt-4">
             <p className="text-xs text-text-secondary mb-1 font-medium">기여 분야</p>

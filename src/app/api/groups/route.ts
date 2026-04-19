@@ -6,20 +6,27 @@ export const dynamic = 'force-dynamic'
 
 export async function GET() {
   const session = await getAuth()
-  const groups = await prisma.group.findMany({
-    where: { isPublic: true },
-    include: {
-      owner: { select: { id: true, name: true, image: true } },
-      _count: { select: { members: true, posts: true } },
-    },
-    orderBy: { createdAt: 'desc' },
-  })
 
   let myGroupIds: string[] = []
   if (session?.user) {
     const memberships = await prisma.groupMember.findMany({ where: { userId: session.user.id }, select: { groupId: true } })
     myGroupIds = memberships.map((m) => m.groupId)
   }
+
+  // 공개 그룹 + 내가 속한 비공개 그룹 모두 가져옴
+  const groups = await prisma.group.findMany({
+    where: {
+      OR: [
+        { isPublic: true },
+        ...(myGroupIds.length > 0 ? [{ id: { in: myGroupIds } }] : []),
+      ],
+    },
+    include: {
+      owner: { select: { id: true, name: true, image: true } },
+      _count: { select: { members: true, posts: true } },
+    },
+    orderBy: { createdAt: 'desc' },
+  })
 
   return NextResponse.json({ groups, myGroupIds })
 }

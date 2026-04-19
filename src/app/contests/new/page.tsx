@@ -2,18 +2,22 @@
 import { useState, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import { useSession } from 'next-auth/react'
-import { Plus, Trash2, UserPlus, X, ImagePlus, RefreshCw, Ban, Eye } from 'lucide-react'
+import { Plus, Trash2, UserPlus, X, ImagePlus, RefreshCw, Ban, Eye, Layers } from 'lucide-react'
 import ReactMarkdown from 'react-markdown'
 import remarkMath from 'remark-math'
 import rehypeKatex from 'rehype-katex'
 import remarkGfm from 'remark-gfm'
 import toast from 'react-hot-toast'
 
+interface SubAnswerDef { label: string; answer: string; extra: string[] }
+
 interface Problem {
   title: string
   content: string
   answer: string
   extraAnswers: string[]
+  subAnswers: SubAnswerDef[]
+  multiPartMode: boolean
   points: number
   imageUrls: string[]
   allowRetry: boolean
@@ -34,7 +38,7 @@ export default function NewContestPage() {
   const [prize2, setPrize2] = useState('')
   const [prize3, setPrize3] = useState('')
   const [problems, setProblems] = useState<Problem[]>([
-    { title: '', content: '', answer: '', extraAnswers: [], points: 100, imageUrls: [], allowRetry: true },
+    { title: '', content: '', answer: '', extraAnswers: [], subAnswers: [{ label: '(1)', answer: '', extra: [] }], multiPartMode: false, points: 100, imageUrls: [], allowRetry: true },
   ])
   const [contributors, setContributors] = useState<Contributor[]>([])
   const [contribQuery, setContribQuery] = useState('')
@@ -86,12 +90,25 @@ export default function NewContestPage() {
   async function handleSubmit() {
     if (!title.trim()) { toast.error('대회명을 입력해주세요'); return }
     for (const p of problems) {
-      if (!p.title.trim() || !p.content.trim() || !p.answer.trim()) {
-        toast.error('모든 문제의 제목/내용/정답을 입력해주세요'); return
+      if (!p.title.trim() || !p.content.trim()) {
+        toast.error('모든 문제의 제목과 내용을 입력해주세요'); return
+      }
+      if (p.multiPartMode) {
+        if (p.subAnswers.length === 0 || p.subAnswers.some((s) => !s.answer.trim())) {
+          toast.error('다중 답변 모드: 모든 슬롯에 정답을 입력해주세요'); return
+        }
+      } else {
+        if (!p.answer.trim()) { toast.error('모든 문제의 정답을 입력해주세요'); return }
       }
     }
     setLoading(true)
     try {
+      // multiPartMode 정보를 API에서 쓰는 형식으로 변환
+      const mappedProblems = problems.map((p) => ({
+        ...p,
+        answer: p.multiPartMode ? '[multi-part]' : p.answer,
+        subAnswers: p.multiPartMode ? p.subAnswers : [],
+      }))
       const res = await fetch('/api/contests', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -100,7 +117,7 @@ export default function NewContestPage() {
           prize1: prize1 ? Number(prize1) : 0,
           prize2: prize2 ? Number(prize2) : 0,
           prize3: prize3 ? Number(prize3) : 0,
-          problems, contributors,
+          problems: mappedProblems, contributors,
         }),
       })
       if (!res.ok) { toast.error((await res.json()).error ?? '오류 발생'); return }
@@ -222,7 +239,7 @@ export default function NewContestPage() {
       <div className="space-y-4">
         <div className="flex items-center justify-between">
           <h2 className="text-sm font-semibold text-text-primary">문제 ({problems.length}개)</h2>
-          <button onClick={() => setProblems((p) => [...p, { title: '', content: '', answer: '', extraAnswers: [], points: 100, imageUrls: [], allowRetry: true }])}
+          <button onClick={() => setProblems((p) => [...p, { title: '', content: '', answer: '', extraAnswers: [], subAnswers: [{ label: '(1)', answer: '', extra: [] }], multiPartMode: false, points: 100, imageUrls: [], allowRetry: true }])}
             className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg border border-border text-xs text-text-secondary hover:text-text-primary hover:border-border-2 transition-colors">
             <Plus size={12} /> 문제 추가
           </button>
@@ -315,37 +332,90 @@ export default function NewContestPage() {
               </div>
             </div>
 
-            {/* Answer + extra answers */}
-            <div>
-              <label className="block text-xs font-medium text-text-secondary mb-1">정답</label>
-              <div className="space-y-2">
-                <input value={p.answer} onChange={(e) => updateProblem(i, 'answer', e.target.value)}
-                  placeholder="정답 1 (필수, 대소문자·공백 무시)"
-                  className="w-full bg-background border border-border rounded-lg px-3 py-2 text-sm text-text-primary focus:outline-none focus:border-accent" />
-                {p.extraAnswers.map((ea, ei) => (
-                  <div key={ei} className="flex gap-2">
-                    <input
-                      value={ea}
-                      onChange={(e) => {
-                        const next = [...p.extraAnswers]; next[ei] = e.target.value
-                        updateProblem(i, 'extraAnswers', next)
-                      }}
-                      placeholder={`정답 ${ei + 2}`}
-                      className="flex-1 bg-background border border-border rounded-lg px-3 py-2 text-sm text-text-primary focus:outline-none focus:border-accent"
-                    />
-                    <button type="button" onClick={() => updateProblem(i, 'extraAnswers', p.extraAnswers.filter((_, k) => k !== ei))} className="text-muted hover:text-red-400 transition-colors">
-                      <X size={14} />
-                    </button>
-                  </div>
-                ))}
+            {/* Answer mode toggle + answer inputs */}
+            <div className="space-y-2">
+              <div className="flex items-center gap-3">
+                <label className="block text-xs font-medium text-text-secondary">정답</label>
                 <button
                   type="button"
-                  onClick={() => updateProblem(i, 'extraAnswers', [...p.extraAnswers, ''])}
-                  className="flex items-center gap-1 text-xs text-text-secondary hover:text-accent transition-colors"
+                  onClick={() => updateProblem(i, 'multiPartMode', !p.multiPartMode)}
+                  className={`flex items-center gap-1 px-2 py-1 rounded text-xs font-medium border transition-colors ${p.multiPartMode ? 'bg-accent/10 text-accent border-accent/30' : 'text-text-secondary border-border hover:border-accent/30 hover:text-accent'}`}
                 >
-                  <Plus size={11} /> 정답 추가
+                  {p.multiPartMode ? '다중 필수 답변' : '단일 답변'}
                 </button>
               </div>
+
+              {!p.multiPartMode ? (
+                <div className="space-y-2">
+                  <input value={p.answer} onChange={(e) => updateProblem(i, 'answer', e.target.value)}
+                    placeholder="정답 (대소문자·공백 무시)"
+                    className="w-full bg-background border border-border rounded-lg px-3 py-2 text-sm text-text-primary focus:outline-none focus:border-accent" />
+                  {p.extraAnswers.map((ea, ei) => (
+                    <div key={ei} className="flex gap-2">
+                      <input value={ea}
+                        onChange={(e) => { const next = [...p.extraAnswers]; next[ei] = e.target.value; updateProblem(i, 'extraAnswers', next) }}
+                        placeholder={`허용 정답 ${ei + 2}`}
+                        className="flex-1 bg-background border border-border rounded-lg px-3 py-2 text-sm text-text-primary focus:outline-none focus:border-accent" />
+                      <button type="button" onClick={() => updateProblem(i, 'extraAnswers', p.extraAnswers.filter((_, k) => k !== ei))} className="text-muted hover:text-red-400 transition-colors"><X size={14} /></button>
+                    </div>
+                  ))}
+                  <button type="button" onClick={() => updateProblem(i, 'extraAnswers', [...p.extraAnswers, ''])} className="flex items-center gap-1 text-xs text-text-secondary hover:text-accent transition-colors">
+                    <Plus size={11} /> 허용 정답 추가
+                  </button>
+                </div>
+              ) : (
+                <div className="space-y-2 p-3 bg-accent/5 border border-accent/20 rounded-xl">
+                  <p className="text-xs text-muted">풀이자가 모든 슬롯을 정확히 입력해야 정답 처리됩니다</p>
+                  {p.subAnswers.map((sub, si) => (
+                    <div key={si} className="space-y-1.5 p-2.5 bg-background border border-border rounded-lg">
+                      <div className="flex gap-2 items-center">
+                        <input value={sub.label}
+                          onChange={(e) => { const next = p.subAnswers.map((s, k) => k === si ? { ...s, label: e.target.value } : s); updateProblem(i, 'subAnswers', next) }}
+                          placeholder="레이블"
+                          className="w-20 bg-surface border border-border rounded px-2 py-1.5 text-xs text-text-primary focus:outline-none focus:border-accent" />
+                        <input value={sub.answer}
+                          onChange={(e) => { const next = p.subAnswers.map((s, k) => k === si ? { ...s, answer: e.target.value } : s); updateProblem(i, 'subAnswers', next) }}
+                          placeholder="정답"
+                          className="flex-1 bg-surface border border-border rounded px-2 py-1.5 text-sm text-text-primary focus:outline-none focus:border-accent" />
+                        {p.subAnswers.length > 1 && (
+                          <button type="button" onClick={() => updateProblem(i, 'subAnswers', p.subAnswers.filter((_, k) => k !== si))} className="text-muted hover:text-red-400"><X size={13} /></button>
+                        )}
+                      </div>
+                      {sub.extra.length > 0 && (
+                        <div className="flex flex-wrap gap-1 pl-1">
+                          {sub.extra.map((ea, ei) => (
+                            <span key={ei} className="flex items-center gap-1 px-2 py-0.5 bg-surface-2 border border-border rounded-full text-xs text-text-secondary">
+                              {ea}
+                              <button type="button" onClick={() => { const next = p.subAnswers.map((s, k) => k === si ? { ...s, extra: s.extra.filter((_, ek) => ek !== ei) } : s); updateProblem(i, 'subAnswers', next) }} className="text-muted hover:text-red-400"><X size={9} /></button>
+                            </span>
+                          ))}
+                        </div>
+                      )}
+                      <div className="flex gap-1 pl-1">
+                        <input
+                          placeholder="허용 정답 추가 후 Enter"
+                          className="flex-1 bg-surface border border-border rounded px-2 py-1 text-xs text-text-primary focus:outline-none focus:border-accent"
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter') {
+                              const val = (e.target as HTMLInputElement).value.trim()
+                              if (val) {
+                                const next = p.subAnswers.map((s, k) => k === si ? { ...s, extra: [...s.extra, val] } : s)
+                                updateProblem(i, 'subAnswers', next);
+                                (e.target as HTMLInputElement).value = ''
+                              }
+                            }
+                          }}
+                        />
+                      </div>
+                    </div>
+                  ))}
+                  <button type="button"
+                    onClick={() => updateProblem(i, 'subAnswers', [...p.subAnswers, { label: `(${p.subAnswers.length + 1})`, answer: '', extra: [] }])}
+                    className="flex items-center gap-1 text-xs text-text-secondary hover:text-accent transition-colors">
+                    <Plus size={11} /> 슬롯 추가
+                  </button>
+                </div>
+              )}
             </div>
 
             <div className="w-28">

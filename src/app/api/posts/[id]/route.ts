@@ -4,8 +4,13 @@ import { getAuth } from '@/lib/auth'
 import { revokeAllPostPoints } from '@/lib/scoring'
 
 export async function GET(_: NextRequest, { params }: { params: { id: string } }) {
-  const post = await prisma.post.findUnique({
-    where: { id: params.id, deletedAt: null },
+  const isNumber = /^\d+$/.test(params.id)
+  const where = isNumber
+    ? { postNumber: parseInt(params.id), deletedAt: null as null }
+    : { id: params.id, deletedAt: null as null }
+
+  const post = await prisma.post.findFirst({
+    where,
     include: {
       author: { select: { id: true, name: true, image: true, points: true, role: true } },
       _count: { select: { likes: true, comments: true } },
@@ -15,11 +20,18 @@ export async function GET(_: NextRequest, { params }: { params: { id: string } }
   return NextResponse.json(post)
 }
 
+function findWhere(rawId: string) {
+  const isNumber = /^\d+$/.test(rawId)
+  return isNumber
+    ? { postNumber: parseInt(rawId), deletedAt: null as null }
+    : { id: rawId, deletedAt: null as null }
+}
+
 export async function PATCH(req: NextRequest, { params }: { params: { id: string } }) {
   const session = await getAuth()
   if (!session?.user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
-  const post = await prisma.post.findUnique({ where: { id: params.id } })
+  const post = await prisma.post.findFirst({ where: findWhere(params.id) })
   if (!post) return NextResponse.json({ error: 'Not found' }, { status: 404 })
   if (post.authorId !== session.user.id && session.user.role !== 'ADMIN') {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
@@ -27,7 +39,7 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
 
   const { title, content, subject, unit, type } = await req.json()
   const updated = await prisma.post.update({
-    where: { id: params.id },
+    where: { id: post.id },
     data: {
       ...(title ? { title } : {}),
       ...(content ? { content } : {}),
@@ -43,7 +55,7 @@ export async function DELETE(_: NextRequest, { params }: { params: { id: string 
   const session = await getAuth()
   if (!session?.user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
-  const post = await prisma.post.findUnique({ where: { id: params.id } })
+  const post = await prisma.post.findFirst({ where: findWhere(params.id) })
   if (!post) return NextResponse.json({ error: 'Not found' }, { status: 404 })
 
   const isAuthor = post.authorId === session.user.id
@@ -51,10 +63,10 @@ export async function DELETE(_: NextRequest, { params }: { params: { id: string 
   if (!isAuthor && !isAdmin) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
 
   // 삭제 시 항상 포인트 환수 (본인/관리자 모두)
-  await revokeAllPostPoints(params.id)
+  await revokeAllPostPoints(post.id)
 
   await prisma.post.update({
-    where: { id: params.id },
+    where: { id: post.id },
     data: { deletedAt: new Date() },
   })
 

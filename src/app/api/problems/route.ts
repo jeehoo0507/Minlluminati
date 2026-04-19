@@ -8,6 +8,9 @@ export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url)
   const subject = searchParams.get('subject')
   const search = searchParams.get('q')
+  const author = searchParams.get('author')
+  const sort = searchParams.get('sort') ?? 'number_desc'
+  const solved = searchParams.get('solved') // 'solved' | 'unsolved' | null
   const page = parseInt(searchParams.get('page') ?? '1')
   const limit = parseInt(searchParams.get('limit') ?? '20')
   const skip = (page - 1) * limit
@@ -16,38 +19,52 @@ export async function GET(req: NextRequest) {
   const userId = session?.user?.id
   const isAdmin = session?.user?.role === 'ADMIN'
 
-  // Build where clause: approved for public, or own pending problems
-  let where: Record<string, unknown> = {}
+  // Build visibility clause: approved for public, or own pending problems
+  const visibilityClause = isAdmin
+    ? undefined
+    : userId
+      ? { OR: [{ status: 'APPROVED' }, { authorId: userId }] }
+      : { status: 'APPROVED' }
 
-  if (isAdmin) {
-    // Admins see everything
-    where = {}
-  } else if (userId) {
-    where = {
-      OR: [
-        { status: 'APPROVED' },
-        { authorId: userId },
-      ],
-    }
-  } else {
-    where = { status: 'APPROVED' }
-  }
-
-  if (subject) where = { ...where, subject }
+  // Build AND conditions array
+  const andClauses: Record<string, unknown>[] = []
+  if (visibilityClause) andClauses.push(visibilityClause)
+  if (subject) andClauses.push({ subject })
   if (search) {
-    const searchClause = {
-      OR: [
-        { title: { contains: search } },
-        { content: { contains: search } },
-      ],
+    const hashMatch = search.trim().match(/^#(\d+)$/)
+    if (hashMatch) {
+      // #번호 → 문제 번호 정확 검색
+      andClauses.push({ problemNumber: parseInt(hashMatch[1]) })
+    } else {
+      andClauses.push({ OR: [{ title: { contains: search } }, { content: { contains: search } }] })
     }
-    where = { ...where, ...searchClause }
   }
+  if (author) andClauses.push({ author: { name: { contains: author } } })
+
+  // 푼 / 안 푼 필터: userId 기반으로 정답 제출 여부 확인
+  if (solved && userId) {
+    const correctSubs = await prisma.problemSubmission.findMany({
+      where: { userId, correct: true },
+      select: { problemId: true },
+    })
+    const solvedIds = correctSubs.map((s) => s.problemId)
+    if (solved === 'solved') {
+      andClauses.push({ id: { in: solvedIds.length > 0 ? solvedIds : ['__none__'] } })
+    } else if (solved === 'unsolved') {
+      andClauses.push({ id: { notIn: solvedIds } })
+    }
+  }
+
+  const where = andClauses.length === 0 ? {} : andClauses.length === 1 ? andClauses[0] : { AND: andClauses }
+
+  const orderBy =
+    sort === 'number_asc' ? { problemNumber: 'asc' as const } :
+    { problemNumber: 'desc' as const }
 
   const [problems, total] = await Promise.all([
     prisma.problem.findMany({
       where,
-      orderBy: { problemNumber: 'asc' },
+      orderBy,
       skip,
       take: limit,
       include: {
@@ -79,10 +96,19 @@ export async function POST(req: NextRequest) {
   const session = await getAuth()
   if (!session?.user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
-  const { title, content, answer, subject, imageUrls, requestedPts } = await req.json()
+  const { title, content, answer, subject, imageUrls, requestedPts, subAnswers } = await req.json()
 
-  if (!title?.trim() || !content?.trim() || !answer?.trim()) {
-    return NextResponse.json({ error: '제목, 내용, 정답은 필수입니다' }, { status: 400 })
+  const subAnswerDefs: { label: string; answer: string; extra?: string[] }[] = Array.isArray(subAnswers) ? subAnswers : []
+  const isMultiPart = subAnswerDefs.length > 0
+
+  if (!title?.trim() || !content?.trim()) {
+    return NextResponse.json({ error: '제목과 내용은 필수입니다' }, { status: 400 })
+  }
+  if (!isMultiPart && !answer?.trim()) {
+    return NextResponse.json({ error: '정답을 입력해주세요' }, { status: 400 })
+  }
+  if (isMultiPart && subAnswerDefs.some((s) => !s.answer?.trim())) {
+    return NextResponse.json({ error: '모든 답변 슬롯에 정답을 입력해주세요' }, { status: 400 })
   }
 
   const maxResult = await prisma.problem.aggregate({ _max: { problemNumber: true } })
@@ -93,10 +119,11 @@ export async function POST(req: NextRequest) {
       problemNumber: nextNumber,
       title: title.trim(),
       content: content.trim(),
-      answer: answer.trim(),
+      answer: isMultiPart ? '[multi-part]' : answer.trim(),
       subject: subject ?? null,
       imageUrls: JSON.stringify(imageUrls ?? []),
       requestedPts: requestedPts ?? 0,
+      subAnswers: JSON.stringify(subAnswerDefs),
       authorId: session.user.id,
       status: 'PENDING',
     },

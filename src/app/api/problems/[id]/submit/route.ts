@@ -25,10 +25,37 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
     return NextResponse.json({ error: '승인된 문제가 아닙니다' }, { status: 400 })
   }
 
-  const { answer } = await req.json()
-  if (!answer?.trim()) return NextResponse.json({ error: '답을 입력해주세요' }, { status: 400 })
+  const { answer, parts } = await req.json()
 
-  const correct = answer.trim().toLowerCase() === problem.answer.trim().toLowerCase()
+  const normalize = (s: string) => s.trim().toLowerCase().replace(/\s+/g, '')
+
+  // Parse subAnswers
+  const subAnswerDefs: { label: string; answer: string; extra?: string[] }[] = (() => {
+    try { return JSON.parse(problem.subAnswers ?? '[]') } catch { return [] }
+  })()
+
+  let correct: boolean
+  let storedAnswer: string
+
+  if (subAnswerDefs.length > 0) {
+    // Multi-part mode
+    if (!Array.isArray(parts) || parts.length !== subAnswerDefs.length) {
+      return NextResponse.json({ error: '답변 개수가 맞지 않습니다' }, { status: 400 })
+    }
+    correct = subAnswerDefs.every((def, i) => {
+      const submitted = normalize(parts[i] ?? '')
+      const allValid = [def.answer, ...(def.extra ?? [])].map(normalize)
+      return allValid.some((a) => a === submitted)
+    })
+    storedAnswer = JSON.stringify(parts)
+  } else {
+    // Single mode
+    if (!answer?.trim()) return NextResponse.json({ error: '답을 입력해주세요' }, { status: 400 })
+    const extraAnswers: string[] = (() => { try { return JSON.parse(problem.extraAnswers ?? '[]') } catch { return [] } })()
+    const allAnswers = [problem.answer, ...extraAnswers].map(normalize)
+    correct = allAnswers.some((a) => a === normalize(answer))
+    storedAnswer = answer.trim()
+  }
 
   // Check if already correctly submitted (to avoid double point award)
   const existing = await prisma.problemSubmission.findUnique({
@@ -39,8 +66,8 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
   // Upsert submission
   await prisma.problemSubmission.upsert({
     where: { problemId_userId: { problemId: params.id, userId: session.user.id } },
-    create: { problemId: params.id, userId: session.user.id, answer: answer.trim(), correct },
-    update: { answer: answer.trim(), correct },
+    create: { problemId: params.id, userId: session.user.id, answer: storedAnswer, correct },
+    update: { answer: storedAnswer, correct },
   })
 
   // Award points only on first correct submission
@@ -63,5 +90,5 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
     pointsAwarded = problem.approvedPts
   }
 
-  return NextResponse.json({ correct, pointsAwarded })
+  return NextResponse.json({ correct, pointsAwarded, multiPart: subAnswerDefs.length > 0 })
 }

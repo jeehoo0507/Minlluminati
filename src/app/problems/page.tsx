@@ -6,7 +6,7 @@ import { Avatar } from '@/components/ui/Avatar'
 import { TierBadge } from '@/components/ui/TierBadge'
 import { ProblemTierBadge } from '@/components/ui/ProblemTierBadge'
 import { SUBJECTS, PROBLEM_SUBJECTS, timeAgo, type SubjectKey } from '@/lib/utils'
-import { Search, PenLine, ListChecks, BookOpen, BarChart2, Menu, X, CheckCircle2, Clock } from 'lucide-react'
+import { Search, PenLine, ListChecks, BookOpen, BarChart2, Menu, X, CheckCircle2, Clock, SortAsc, User } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
 interface Problem {
@@ -17,6 +17,7 @@ interface Problem {
   status: string
   requestedPts: number
   approvedPts?: number | null
+  contestId?: string | null
   createdAt: string
   author: { id: string; name?: string | null; image?: string | null; points: number }
   _count: { submissions: number }
@@ -39,6 +40,10 @@ export default function ProblemsPage() {
   const [search, setSearch] = useState('')
   const [query, setQuery] = useState('')
   const [subject, setSubject] = useState('')
+  const [sort, setSort] = useState('number_desc')
+  const [solvedFilter, setSolvedFilter] = useState<'all' | 'solved' | 'unsolved'>('all')
+  const [authorSearch, setAuthorSearch] = useState('')
+  const [authorQuery, setAuthorQuery] = useState('')
   const [loading, setLoading] = useState(false)
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const [activeTab, setActiveTab] = useState<'list' | 'sets'>('list')
@@ -49,6 +54,9 @@ export default function ProblemsPage() {
       const params = new URLSearchParams({ page: String(page), limit: '20' })
       if (query) params.set('q', query)
       if (subject) params.set('subject', subject)
+      if (sort) params.set('sort', sort)
+      if (authorQuery) params.set('author', authorQuery)
+      if (solvedFilter !== 'all') params.set('solved', solvedFilter)
       const res = await fetch(`/api/problems?${params}`)
       if (res.ok) {
         const data = await res.json()
@@ -59,7 +67,7 @@ export default function ProblemsPage() {
     } finally {
       setLoading(false)
     }
-  }, [page, query, subject])
+  }, [page, query, subject, sort, authorQuery, solvedFilter])
 
   useEffect(() => { load() }, [load])
 
@@ -67,6 +75,23 @@ export default function ProblemsPage() {
     e.preventDefault()
     setPage(1)
     setQuery(search)
+    setAuthorQuery(authorSearch)
+  }
+
+  function handleSortChange(newSort: string) {
+    setSort(newSort)
+    setPage(1)
+  }
+
+  function handleSolvedFilterChange(val: 'all' | 'solved' | 'unsolved') {
+    setSolvedFilter(val)
+    setPage(1)
+  }
+
+  function handleSortAndFilter(newSort: string, newFilter: 'all' | 'solved' | 'unsolved') {
+    setSort(newSort)
+    setSolvedFilter(newFilter)
+    setPage(1)
   }
 
   function handleSubjectFilter(key: string) {
@@ -169,31 +194,61 @@ export default function ProblemsPage() {
         </div>
 
         {/* Search */}
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-wrap">
           <button
             onClick={() => setSidebarOpen(true)}
             className="lg:hidden flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-border text-sm text-text-secondary hover:text-text-primary hover:bg-surface-2 transition-colors"
           >
             <Menu size={15} /> 필터
           </button>
-          <form onSubmit={handleSearch} className="flex-1 flex gap-2">
-            <div className="relative flex-1">
+          <form onSubmit={handleSearch} className="flex-1 flex gap-2 flex-wrap">
+            <div className="relative flex-1 min-w-36">
               <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted" />
               <input
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
-                placeholder="문제 검색..."
+                placeholder="#번호 또는 제목·내용 검색..."
                 className="w-full bg-surface border border-border rounded-lg pl-9 pr-3 py-2 text-sm text-text-primary placeholder:text-muted focus:outline-none focus:border-accent"
+              />
+            </div>
+            <div className="relative min-w-28">
+              <User size={13} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted" />
+              <input
+                value={authorSearch}
+                onChange={(e) => setAuthorSearch(e.target.value)}
+                placeholder="출제자 검색"
+                className="w-full bg-surface border border-border rounded-lg pl-8 pr-3 py-2 text-sm text-text-primary placeholder:text-muted focus:outline-none focus:border-accent"
               />
             </div>
             <button type="submit" className="px-3 py-2 rounded-lg bg-surface border border-border text-sm text-text-secondary hover:text-text-primary hover:border-border-2 transition-colors">
               검색
             </button>
           </form>
+          {/* Sort + Solved filter — 하나의 select */}
+          <div className="flex items-center gap-1 border border-border rounded-lg overflow-hidden text-xs">
+            <SortAsc size={13} className="ml-2 text-muted shrink-0" />
+            <select
+              value={`${sort}:${solvedFilter}`}
+              onChange={(e) => {
+                const [newSort, newFilter] = e.target.value.split(':')
+                handleSortAndFilter(newSort, newFilter as 'all' | 'solved' | 'unsolved')
+              }}
+              className="bg-surface text-text-secondary py-2 pl-1 pr-2 focus:outline-none text-xs"
+            >
+              <option value="number_desc:all">번호 내림차순</option>
+              <option value="number_asc:all">번호 오름차순</option>
+              {session?.user && (
+                <>
+                  <option value="number_desc:unsolved">안 푼 문제</option>
+                  <option value="number_desc:solved">푼 문제</option>
+                </>
+              )}
+            </select>
+          </div>
         </div>
 
         {/* Active filters */}
-        {(query || subject) && (
+        {(query || subject || authorQuery || solvedFilter !== 'all') && (
           <div className="flex items-center gap-2 flex-wrap">
             {query && (
               <span className="flex items-center gap-1 px-2 py-0.5 bg-surface-2 border border-border rounded-md text-xs text-text-secondary">
@@ -201,10 +256,22 @@ export default function ProblemsPage() {
                 <button onClick={() => { setQuery(''); setSearch('') }} className="ml-1 hover:text-red-400"><X size={10} /></button>
               </span>
             )}
+            {authorQuery && (
+              <span className="flex items-center gap-1 px-2 py-0.5 bg-surface-2 border border-border rounded-md text-xs text-text-secondary">
+                출제자: {authorQuery}
+                <button onClick={() => { setAuthorQuery(''); setAuthorSearch('') }} className="ml-1 hover:text-red-400"><X size={10} /></button>
+              </span>
+            )}
             {subject && (
               <span className="flex items-center gap-1 px-2 py-0.5 bg-surface-2 border border-border rounded-md text-xs text-text-secondary">
                 과목: {SUBJECTS[subject as SubjectKey]?.label}
                 <button onClick={() => setSubject('')} className="ml-1 hover:text-red-400"><X size={10} /></button>
+              </span>
+            )}
+            {session?.user && solvedFilter !== 'all' && (
+              <span className="flex items-center gap-1 px-2 py-0.5 bg-surface-2 border border-border rounded-md text-xs text-text-secondary">
+                {solvedFilter === 'solved' ? '✓ 푼 문제' : '✗ 안 푼 문제'}
+                <button onClick={() => handleSolvedFilterChange('all')} className="ml-1 hover:text-red-400"><X size={10} /></button>
               </span>
             )}
           </div>
@@ -253,6 +320,9 @@ export default function ProblemsPage() {
                         <span className={cn('text-xs px-1.5 py-0.5 rounded border', status.cls)}>
                           {status.label}
                         </span>
+                      )}
+                      {p.contestId && (
+                        <span className="text-xs px-1.5 py-0.5 rounded border border-violet-400/40 text-violet-500">🏆</span>
                       )}
                     </div>
                     <p className="text-sm font-medium text-text-primary truncate">{p.title}</p>
