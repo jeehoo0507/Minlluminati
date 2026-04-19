@@ -5,8 +5,9 @@ import { useParams, useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { Avatar } from '@/components/ui/Avatar'
 import { TierBadge } from '@/components/ui/TierBadge'
+import { ProblemTierBadge } from '@/components/ui/ProblemTierBadge'
 import { SUBJECTS, timeAgo, type SubjectKey, cn } from '@/lib/utils'
-import { ArrowLeft, BookOpen, Trash2, Plus, CheckCircle2, BarChart2 } from 'lucide-react'
+import { ArrowLeft, BookOpen, Trash2, Plus, CheckCircle2, Circle, BarChart2, XCircle } from 'lucide-react'
 import toast from 'react-hot-toast'
 
 interface Problem {
@@ -26,6 +27,9 @@ interface SetItem {
   order: number
   problemId: string
   problem: Problem
+  solved: boolean
+  tried: boolean
+  correctCount: number
 }
 
 interface ProblemSet {
@@ -37,6 +41,7 @@ interface ProblemSet {
   createdAt: string
   author: { id: string; name?: string | null; image?: string | null; points: number }
   items: SetItem[]
+  progress: { solved: number; total: number; percent: number }
 }
 
 export default function ProblemSetDetailPage() {
@@ -76,8 +81,7 @@ export default function ProblemSetDetailPage() {
         setAddNumber('')
         await load()
       } else {
-        const err = await res.json()
-        toast.error(err.error ?? '추가 실패')
+        toast.error((await res.json()).error ?? '추가 실패')
       }
     } finally { setAdding(false) }
   }
@@ -89,10 +93,8 @@ export default function ProblemSetDetailPage() {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ problemId }),
     })
-    if (res.ok) {
-      toast.success('제거되었습니다')
-      await load()
-    } else toast.error('제거 실패')
+    if (res.ok) { toast.success('제거되었습니다'); await load() }
+    else toast.error('제거 실패')
   }
 
   async function handleDeleteSet() {
@@ -113,13 +115,16 @@ export default function ProblemSetDetailPage() {
   const isOwner = session?.user?.id === set.authorId
   const isAdmin = session?.user?.role === 'ADMIN'
   const canManage = isOwner || isAdmin
+  const isLoggedIn = !!session?.user
+  const { solved, total, percent } = set.progress
+
+  // Progress bar color
+  const barColor = percent === 100 ? 'bg-emerald-500' : percent >= 50 ? 'bg-accent' : 'bg-amber-400'
 
   return (
     <div className="max-w-4xl mx-auto px-4 py-8 space-y-6">
-      {/* Back */}
       <Link href="/problems/sets" className="inline-flex items-center gap-1.5 text-sm text-text-secondary hover:text-text-primary transition-colors">
-        <ArrowLeft size={14} />
-        문제집 목록
+        <ArrowLeft size={14} /> 문제집 목록
       </Link>
 
       {/* Header */}
@@ -143,18 +148,53 @@ export default function ProblemSetDetailPage() {
             </div>
           </div>
           <div className="flex items-center gap-2 shrink-0">
-            <span className="text-sm font-bold text-accent">{set.items.length}문제</span>
+            <span className="text-sm font-bold text-accent">{total}문제</span>
             {canManage && (
-              <button
-                onClick={handleDeleteSet}
-                className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs text-muted hover:text-red-400 hover:bg-red-400/5 border border-transparent hover:border-red-400/20 transition-all"
-              >
-                <Trash2 size={12} />
-                삭제
+              <button onClick={handleDeleteSet}
+                className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs text-muted hover:text-red-400 hover:bg-red-400/5 border border-transparent hover:border-red-400/20 transition-all">
+                <Trash2 size={12} /> 삭제
               </button>
             )}
           </div>
         </div>
+
+        {/* Progress bar */}
+        {total > 0 && (
+          <div className="space-y-2 pt-1">
+            <div className="flex items-center justify-between text-sm">
+              <div className="flex items-center gap-2">
+                {percent === 100 ? (
+                  <span className="flex items-center gap-1.5 text-emerald-500 font-semibold">
+                    <CheckCircle2 size={15} /> 완료!
+                  </span>
+                ) : (
+                  <span className="text-text-secondary font-medium">진행도</span>
+                )}
+              </div>
+              <div className="flex items-center gap-3 text-xs text-muted">
+                {isLoggedIn && (
+                  <span className={cn('font-bold text-sm', percent === 100 ? 'text-emerald-500' : 'text-text-primary')}>
+                    {solved} / {total}
+                  </span>
+                )}
+                <span>{percent}%</span>
+              </div>
+            </div>
+            <div className="h-2.5 bg-surface-2 rounded-full overflow-hidden">
+              <div
+                className={cn('h-full rounded-full transition-all duration-500', barColor)}
+                style={{ width: `${percent}%` }}
+              />
+            </div>
+            {isLoggedIn && (
+              <div className="flex items-center gap-4 text-xs text-muted">
+                <span className="flex items-center gap-1"><CheckCircle2 size={11} className="text-emerald-500" /> 해결 {solved}</span>
+                <span className="flex items-center gap-1"><XCircle size={11} className="text-amber-400" /> 시도 {set.items.filter(i => i.tried && !i.solved).length}</span>
+                <span className="flex items-center gap-1"><Circle size={11} /> 미시도 {set.items.filter(i => !i.tried).length}</span>
+              </div>
+            )}
+          </div>
+        )}
 
         {/* Add problem (owner only) */}
         {canManage && (
@@ -163,21 +203,15 @@ export default function ProblemSetDetailPage() {
             <div className="flex items-center gap-1.5">
               <span className="text-sm text-muted">#</span>
               <input
-                type="number"
-                min={1}
-                value={addNumber}
+                type="number" min={1} value={addNumber}
                 onChange={(e) => setAddNumber(e.target.value)}
                 placeholder="문제 번호"
                 className="w-28 bg-background border border-border rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:border-accent"
               />
             </div>
-            <button
-              type="submit"
-              disabled={adding || !addNumber.trim()}
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-accent text-background text-xs font-semibold hover:bg-accent-dim transition-colors disabled:opacity-50"
-            >
-              <Plus size={13} />
-              {adding ? '추가 중...' : '추가'}
+            <button type="submit" disabled={adding || !addNumber.trim()}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-accent text-background text-xs font-semibold hover:bg-accent-dim transition-colors disabled:opacity-50">
+              <Plus size={13} /> {adding ? '추가 중...' : '추가'}
             </button>
           </form>
         )}
@@ -185,20 +219,42 @@ export default function ProblemSetDetailPage() {
 
       {/* Problem list */}
       {set.items.length > 0 ? (
-        <div className="space-y-2">
+        <div className="bg-surface border border-border rounded-2xl overflow-hidden">
+          {/* Table header */}
+          <div className="grid grid-cols-[2rem_1fr_5rem_4rem_2.5rem] gap-3 px-4 py-2 border-b border-border bg-surface-2 text-xs font-semibold text-text-secondary">
+            <span className="text-center">#</span>
+            <span>문제</span>
+            <span className="text-center">정답률</span>
+            <span className="text-center">난이도</span>
+            <span className="text-center">상태</span>
+          </div>
+
           {set.items.map((item, idx) => {
             const p = item.problem
             const subjectInfo = p.subject ? SUBJECTS[p.subject as SubjectKey] : null
+            const solveRate = p._count.submissions > 0
+              ? Math.round((item.correctCount / p._count.submissions) * 100)
+              : null
 
             return (
-              <div key={item.id} className="flex items-center gap-3 p-4 bg-surface border border-border rounded-xl hover:border-border-2 transition-colors group">
-                {/* Order */}
-                <div className="w-8 text-center text-sm font-medium text-muted shrink-0">{idx + 1}</div>
+              <div
+                key={item.id}
+                className={cn(
+                  'grid grid-cols-[2rem_1fr_5rem_4rem_2.5rem] gap-3 px-4 py-3 border-b border-border last:border-0 group transition-colors',
+                  item.solved
+                    ? 'bg-emerald-500/5 hover:bg-emerald-500/10'
+                    : item.tried
+                    ? 'bg-amber-400/5 hover:bg-amber-400/10'
+                    : 'hover:bg-surface-2'
+                )}
+              >
+                {/* Index */}
+                <div className="flex items-center justify-center text-sm font-medium text-muted">{idx + 1}</div>
 
-                {/* Problem link */}
-                <Link href={`/problems/${p.id}`} className="flex-1 min-w-0 flex items-start gap-3">
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2 mb-0.5">
+                {/* Problem info */}
+                <Link href={`/problems/${p.id}`} className="flex items-center gap-3 min-w-0">
+                  <div className="min-w-0">
+                    <div className="flex items-center gap-2 mb-0.5 flex-wrap">
                       <span className="text-xs font-mono font-semibold text-accent">#{p.problemNumber}</span>
                       {subjectInfo && (
                         <span className="text-xs px-1.5 py-0.5 rounded border border-border text-text-secondary">
@@ -206,39 +262,60 @@ export default function ProblemSetDetailPage() {
                         </span>
                       )}
                     </div>
-                    <p className="text-sm font-medium text-text-primary group-hover:text-accent transition-colors truncate">{p.title}</p>
-                    <div className="flex items-center gap-2 mt-1">
-                      <div className="flex items-center gap-1">
-                        <Avatar name={p.author.name} image={p.author.image} size={14} />
-                        <span className="text-xs text-muted">{p.author.name}</span>
-                      </div>
+                    <p className={cn(
+                      'text-sm font-medium truncate group-hover:text-accent transition-colors',
+                      item.solved ? 'text-emerald-600' : 'text-text-primary'
+                    )}>
+                      {p.title}
+                    </p>
+                    <div className="flex items-center gap-1 mt-0.5">
+                      <Avatar name={p.author.name} image={p.author.image} size={12} />
+                      <span className="text-xs text-muted">{p.author.name}</span>
                     </div>
-                  </div>
-                  <div className="shrink-0 text-right">
-                    <div className="flex items-center gap-1 text-xs text-muted mb-1">
-                      <BarChart2 size={11} />
-                      {p._count.submissions}명
-                    </div>
-                    {p.approvedPts != null && p.approvedPts > 0 && (
-                      <div className="flex items-center gap-0.5 text-xs font-semibold text-accent justify-end">
-                        <CheckCircle2 size={11} />
-                        {p.approvedPts}pt
-                      </div>
-                    )}
                   </div>
                 </Link>
 
-                {/* Remove button */}
+                {/* Solve rate */}
+                <div className="flex flex-col items-center justify-center gap-0.5">
+                  {solveRate !== null ? (
+                    <>
+                      <span className="text-sm font-semibold text-text-primary">{solveRate}%</span>
+                      <div className="flex items-center gap-0.5 text-xs text-muted">
+                        <BarChart2 size={10} />
+                        <span>{p._count.submissions}</span>
+                      </div>
+                    </>
+                  ) : (
+                    <span className="text-xs text-muted">-</span>
+                  )}
+                </div>
+
+                {/* Difficulty */}
+                <div className="flex items-center justify-center">
+                  <ProblemTierBadge pts={p.approvedPts} />
+                </div>
+
+                {/* Status icon */}
+                <div className="flex items-center justify-center">
+                  {item.solved ? (
+                    <CheckCircle2 size={18} className="text-emerald-500" />
+                  ) : item.tried ? (
+                    <XCircle size={18} className="text-amber-400" />
+                  ) : (
+                    <Circle size={18} className="text-muted/40" />
+                  )}
+                </div>
+
+                {/* Remove button (hover, owner only) */}
                 {canManage && (
-                  <button
-                    onClick={() => handleRemoveProblem(p.id, p.problemNumber)}
-                    className={cn(
-                      'shrink-0 p-1.5 rounded-lg text-muted hover:text-red-400 hover:bg-red-400/5 transition-all',
-                      'opacity-0 group-hover:opacity-100'
-                    )}
-                  >
-                    <Trash2 size={13} />
-                  </button>
+                  <div className="col-span-5 flex justify-end -mt-2 pb-0 opacity-0 group-hover:opacity-100 transition-all h-0 overflow-visible">
+                    <button
+                      onClick={() => handleRemoveProblem(p.id, p.problemNumber)}
+                      className="flex items-center gap-1 px-2 py-0.5 rounded text-xs text-muted hover:text-red-400 hover:bg-red-400/5 transition-all"
+                    >
+                      <Trash2 size={11} /> 제거
+                    </button>
+                  </div>
                 )}
               </div>
             )
@@ -248,9 +325,7 @@ export default function ProblemSetDetailPage() {
         <div className="text-center py-16 bg-surface border border-border rounded-2xl">
           <BookOpen size={40} className="mx-auto text-muted mb-3" />
           <p className="text-text-secondary">아직 문제가 없습니다</p>
-          {canManage && (
-            <p className="text-sm text-muted mt-2">문제 번호를 입력하여 추가해보세요</p>
-          )}
+          {canManage && <p className="text-sm text-muted mt-2">문제 번호를 입력하여 추가해보세요</p>}
         </div>
       )}
     </div>

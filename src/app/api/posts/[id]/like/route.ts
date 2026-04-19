@@ -21,6 +21,9 @@ export async function POST(_: NextRequest, { params }: { params: { id: string } 
     select: { id: true, authorId: true, subject: true },
   })
   if (!post) return NextResponse.json({ error: 'Not found' }, { status: 404 })
+  if (post.authorId === session.user.id) {
+    return NextResponse.json({ error: '자신의 글에는 추천할 수 없습니다' }, { status: 400 })
+  }
 
   const existing = await prisma.like.findUnique({
     where: { userId_postId: { userId: session.user.id, postId: params.id } },
@@ -34,24 +37,27 @@ export async function POST(_: NextRequest, { params }: { params: { id: string } 
     })
     await revokeLikePoints(post.authorId, params.id, post.subject, likePoints)
     const count = await prisma.like.count({ where: { postId: params.id } })
-    return NextResponse.json({ liked: false, count })
+    return NextResponse.json({ liked: false, count, likePoints })
   } else {
     await prisma.like.create({
       data: { userId: session.user.id, postId: params.id },
     })
     await awardLikePoints(post.authorId, params.id, post.subject, likePoints)
     const count = await prisma.like.count({ where: { postId: params.id } })
-    return NextResponse.json({ liked: true, count })
+    return NextResponse.json({ liked: true, count, likePoints })
   }
 }
 
 export async function GET(req: NextRequest, { params }: { params: { id: string } }) {
   const session = await getAuth()
-  const count = await prisma.like.count({ where: { postId: params.id } })
+  const [count, likePoints] = await Promise.all([
+    prisma.like.count({ where: { postId: params.id } }),
+    getLikePoints(),
+  ])
   const liked = session?.user
     ? !!(await prisma.like.findUnique({
         where: { userId_postId: { userId: session.user.id, postId: params.id } },
       }))
     : false
-  return NextResponse.json({ liked, count })
+  return NextResponse.json({ liked, count, likePoints })
 }

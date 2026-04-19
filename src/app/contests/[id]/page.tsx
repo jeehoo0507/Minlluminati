@@ -6,14 +6,15 @@ import ReactMarkdown from 'react-markdown'
 import remarkMath from 'remark-math'
 import rehypeKatex from 'rehype-katex'
 import remarkGfm from 'remark-gfm'
+import Link from 'next/link'
 import { Avatar } from '@/components/ui/Avatar'
 import { TierBadge } from '@/components/ui/TierBadge'
 import { timeAgo } from '@/lib/utils'
-import { Clock, Users, CheckCircle, Play, Pencil, X, Save, Send, MessageSquare, Plus, ImagePlus, RefreshCw, RefreshCwOff } from 'lucide-react'
+import { Clock, Users, CheckCircle, Play, Pencil, X, Save, Send, MessageSquare, Plus, ImagePlus, RefreshCw, Ban, UserPlus, Eye, PenLine } from 'lucide-react'
 import toast from 'react-hot-toast'
 
 interface Problem { id: string; label: string; title: string; content: string; answer?: string; extraAnswers?: string[]; points: number; imageUrls?: string[]; allowRetry?: boolean }
-interface Contributor { id: string; userId: string; role: string; user: { id: string; name?: string | null } }
+interface Contributor { id: string; userId: string; role: string; user: { id: string; name?: string | null; image?: string | null; points: number } }
 interface ChatMsg { id: string; content: string; createdAt: string; author: { id: string; name?: string | null; image?: string | null } }
 interface Contest {
   id: string; title: string; description: string; rules: string; status: string
@@ -42,7 +43,15 @@ export default function ContestPage() {
   const [chatMsg, setChatMsg] = useState('')
   const [chatLoading, setChatLoading] = useState(false)
   const [uploadingProblem, setUploadingProblem] = useState<string | null>(null)
+  const [editPreview, setEditPreview] = useState(false)
+  const [editingInfo, setEditingInfo] = useState(false)
+  const [infoDraft, setInfoDraft] = useState({ title: '', description: '', rules: '', contribs: [] as { query: string; role: 'CONTRIBUTOR' | 'REVIEWER' }[] })
+  const [savingInfo, setSavingInfo] = useState(false)
+  const [newContribQuery, setNewContribQuery] = useState('')
+  const [newContribRole, setNewContribRole] = useState<'CONTRIBUTOR' | 'REVIEWER'>('CONTRIBUTOR')
   const fileInputRef = useRef<HTMLInputElement>(null)
+  const editTextareaRef = useRef<HTMLTextAreaElement | null>(null)
+  const editFileInputRef = useRef<HTMLInputElement | null>(null)
 
   const load = useCallback(async () => {
     const res = await fetch(`/api/contests/${id}`)
@@ -125,6 +134,26 @@ export default function ContestPage() {
   const canEditProblems = (isOrganizer || isAdmin || isContributor) && !['ONGOING', 'ENDED'].includes(contest.status)
   const canChat = (isOrganizer || isAdmin || isContributor) && !['ONGOING', 'ENDED'].includes(contest.status)
 
+  async function saveInfo() {
+    setSavingInfo(true)
+    try {
+      const res = await fetch(`/api/contests/${id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          title: infoDraft.title,
+          description: infoDraft.description,
+          rules: infoDraft.rules,
+          contributors: infoDraft.contribs,
+        }),
+      })
+      if (!res.ok) { toast.error((await res.json()).error ?? '오류'); return }
+      toast.success('대회 정보가 수정되었습니다')
+      setEditingInfo(false)
+      load()
+    } finally { setSavingInfo(false) }
+  }
+
   async function saveProblemEdit(problemId: string) {
     setSaving(true)
     try {
@@ -140,10 +169,10 @@ export default function ContestPage() {
     } finally { setSaving(false) }
   }
 
-  const loadChat = useCallback(async () => {
+  async function loadChat() {
     const res = await fetch(`/api/contests/${id}/chat`)
     if (res.ok) setChats(await res.json())
-  }, [id])
+  }
 
   async function sendChat() {
     if (!chatMsg.trim()) return
@@ -156,6 +185,25 @@ export default function ContestPage() {
       if (res.ok) { setChatMsg(''); loadChat() }
       else toast.error((await res.json()).error ?? '오류')
     } finally { setChatLoading(false) }
+  }
+
+  function insertEditImageAtCursor(url: string) {
+    const insert = `![이미지](${url})`
+    const ta = editTextareaRef.current
+    const start = ta?.selectionStart ?? null
+    const end = ta?.selectionEnd ?? null
+    setEditDraft((d) => {
+      const content = d.content ?? ''
+      const s = start ?? content.length
+      const e = end ?? content.length
+      return { ...d, content: content.slice(0, s) + insert + content.slice(e), imageUrls: [...(d.imageUrls ?? []), url] }
+    })
+    if (ta && start !== null) {
+      requestAnimationFrame(() => {
+        ta.selectionStart = ta.selectionEnd = start + insert.length
+        ta.focus()
+      })
+    }
   }
 
   async function uploadProblemImage(problemId: string, file: File) {
@@ -195,46 +243,139 @@ export default function ContestPage() {
     <div className="max-w-4xl mx-auto px-4 py-8 space-y-6">
       {/* Header */}
       <div className="bg-surface border border-border rounded-2xl p-6 space-y-4">
-        <div className="flex items-start justify-between gap-4">
-          <div className="flex-1">
-            <div className="flex items-center gap-2 mb-2">
-              <span className={`text-xs px-2 py-0.5 rounded border font-medium ${STATUS_COLORS[contest.status] ?? ''}`}>
-                {STATUS_TEXT[contest.status]}
-              </span>
-              {contest.status === 'ONGOING' && timeLeft !== null && (
-                <span className={`text-sm font-mono font-bold ${timeLeft < 300000 ? 'text-red-500' : 'text-accent'}`}>
-                  <Clock size={13} className="inline mr-1" />{formatTime(timeLeft)}
-                </span>
-              )}
+        {editingInfo ? (
+          <div className="space-y-3">
+            <div className="flex items-center justify-between mb-1">
+              <span className="text-sm font-semibold text-text-primary">대회 정보 수정</span>
+              <button onClick={() => setEditingInfo(false)} className="text-muted hover:text-text-secondary"><X size={16} /></button>
             </div>
-            <h1 className="text-2xl font-bold text-text-primary">{contest.title}</h1>
-            <p className="text-sm text-text-secondary mt-1">{contest.description}</p>
-            {contest.contributors && contest.contributors.length > 0 && (
-              <div className="mt-2 flex flex-wrap gap-3 text-xs text-muted">
-                {['CONTRIBUTOR', 'REVIEWER'].map((role) => {
-                  const group = contest.contributors.filter((c) => c.role === role)
-                  if (!group.length) return null
-                  return (
-                    <span key={role}>
-                      <span className="font-semibold text-text-secondary">{role === 'CONTRIBUTOR' ? '출제' : '검토'}: </span>
-                      {group.map((c) => c.user.name ?? '?').join(', ')}
-                    </span>
-                  )
-                })}
+            <div>
+              <label className="text-xs text-muted mb-1 block">대회명</label>
+              <input value={infoDraft.title} onChange={(e) => setInfoDraft((d) => ({ ...d, title: e.target.value }))}
+                className="w-full bg-background border border-border rounded-lg px-3 py-2 text-sm text-text-primary focus:outline-none focus:border-accent" />
+            </div>
+            <div>
+              <label className="text-xs text-muted mb-1 block">설명</label>
+              <textarea value={infoDraft.description} onChange={(e) => setInfoDraft((d) => ({ ...d, description: e.target.value }))} rows={3}
+                className="w-full bg-background border border-border rounded-lg px-3 py-2 text-sm text-text-primary focus:outline-none focus:border-accent resize-none" />
+            </div>
+            <div>
+              <label className="text-xs text-muted mb-1 block">규칙</label>
+              <textarea value={infoDraft.rules} onChange={(e) => setInfoDraft((d) => ({ ...d, rules: e.target.value }))} rows={2}
+                className="w-full bg-background border border-border rounded-lg px-3 py-2 text-sm text-text-primary focus:outline-none focus:border-accent resize-none" />
+            </div>
+            <div>
+              <label className="text-xs text-muted mb-2 block">출제자 / 검토자</label>
+              <div className="flex flex-wrap gap-2 mb-2">
+                {infoDraft.contribs.map((c, i) => (
+                  <span key={i} className="flex items-center gap-1.5 px-2.5 py-1 bg-surface-2 border border-border rounded-full text-xs text-text-secondary">
+                    <span className="text-accent font-medium">{c.role === 'CONTRIBUTOR' ? '출제' : '검토'}</span>
+                    {c.query}
+                    <button onClick={() => setInfoDraft((d) => ({ ...d, contribs: d.contribs.filter((_, k) => k !== i) }))} className="text-muted hover:text-red-400"><X size={10} /></button>
+                  </span>
+                ))}
               </div>
-            )}
+              <div className="flex gap-2">
+                <input
+                  value={newContribQuery}
+                  onChange={(e) => setNewContribQuery(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' && newContribQuery.trim()) {
+                      setInfoDraft((d) => ({ ...d, contribs: [...d.contribs, { query: newContribQuery.trim(), role: newContribRole }] }))
+                      setNewContribQuery('')
+                    }
+                  }}
+                  placeholder="이메일 또는 닉네임"
+                  className="flex-1 bg-background border border-border rounded-lg px-3 py-1.5 text-sm text-text-primary focus:outline-none focus:border-accent"
+                />
+                <select value={newContribRole} onChange={(e) => setNewContribRole(e.target.value as 'CONTRIBUTOR' | 'REVIEWER')}
+                  className="bg-background border border-border rounded-lg px-2 py-1.5 text-sm text-text-primary focus:outline-none focus:border-accent">
+                  <option value="CONTRIBUTOR">출제자</option>
+                  <option value="REVIEWER">검토자</option>
+                </select>
+                <button type="button" onClick={() => {
+                  if (!newContribQuery.trim()) return
+                  setInfoDraft((d) => ({ ...d, contribs: [...d.contribs, { query: newContribQuery.trim(), role: newContribRole }] }))
+                  setNewContribQuery('')
+                }} className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg border border-border text-xs text-text-secondary hover:text-text-primary transition-colors">
+                  <UserPlus size={12} /> 추가
+                </button>
+              </div>
+            </div>
+            <div className="flex justify-end gap-2 pt-2 border-t border-border">
+              <button onClick={() => setEditingInfo(false)} className="px-3 py-1.5 rounded-lg text-sm text-text-secondary hover:bg-surface-2 transition-colors">취소</button>
+              <button onClick={saveInfo} disabled={savingInfo}
+                className="flex items-center gap-1.5 px-4 py-1.5 rounded-lg bg-accent text-white text-sm font-semibold hover:bg-accent-dim transition-colors disabled:opacity-50">
+                <Save size={13} />{savingInfo ? '저장 중...' : '저장'}
+              </button>
+            </div>
           </div>
-          <div className="text-right shrink-0 space-y-2">
-            <div className="text-sm text-muted flex items-center gap-1 justify-end"><Clock size={13} />{contest.durationMin}분</div>
-            <div className="text-sm text-muted flex items-center gap-1 justify-end"><Users size={13} />{contest._count.participants}명</div>
-          </div>
-        </div>
+        ) : (
+          <>
+            <div className="flex items-start justify-between gap-4">
+              <div className="flex-1">
+                <div className="flex items-center gap-2 mb-2">
+                  <span className={`text-xs px-2 py-0.5 rounded border font-medium ${STATUS_COLORS[contest.status] ?? ''}`}>
+                    {STATUS_TEXT[contest.status]}
+                  </span>
+                  {contest.status === 'ONGOING' && timeLeft !== null && (
+                    <span className={`text-sm font-mono font-bold ${timeLeft < 300000 ? 'text-red-500' : 'text-accent'}`}>
+                      <Clock size={13} className="inline mr-1" />{formatTime(timeLeft)}
+                    </span>
+                  )}
+                </div>
+                <h1 className="text-2xl font-bold text-text-primary">{contest.title}</h1>
+                {contest.description && <p className="text-sm text-text-secondary mt-1">{contest.description}</p>}
+              </div>
+              <div className="shrink-0 flex flex-col items-end gap-2">
+                <div className="flex items-center gap-2">
+                  <div className="text-sm text-muted flex items-center gap-1"><Clock size={13} />{contest.durationMin}분</div>
+                  <div className="text-sm text-muted flex items-center gap-1"><Users size={13} />{contest._count.participants}명</div>
+                </div>
+                {(isOrganizer || isAdmin) && !['ONGOING', 'ENDED'].includes(contest.status) && (
+                  <button
+                    onClick={() => {
+                      setInfoDraft({
+                        title: contest.title,
+                        description: contest.description ?? '',
+                        rules: contest.rules ?? '',
+                        contribs: contest.contributors.map((c) => ({ query: c.user.name ?? '', role: c.role as 'CONTRIBUTOR' | 'REVIEWER' })),
+                      })
+                      setEditingInfo(true)
+                    }}
+                    className="flex items-center gap-1 text-xs text-muted hover:text-accent transition-colors"
+                  >
+                    <Pencil size={12} /> 수정
+                  </button>
+                )}
+              </div>
+            </div>
 
-        <div className="flex items-center gap-2 pt-3 border-t border-border">
-          <Avatar name={contest.organizer.name} image={contest.organizer.image} size={24} />
-          <span className="text-xs text-text-secondary">{contest.organizer.name}</span>
-          <TierBadge points={contest.organizer.points} />
-        </div>
+            <div className="flex flex-wrap items-center gap-3 pt-3 border-t border-border text-xs text-muted">
+              <div className="flex items-center gap-1.5">
+                <Avatar name={contest.organizer.name} image={contest.organizer.image} size={20} />
+                <span className="font-medium text-text-secondary">{contest.organizer.name}</span>
+                <TierBadge points={contest.organizer.points} />
+                <span className="text-muted">(주최)</span>
+              </div>
+              {['CONTRIBUTOR', 'REVIEWER'].map((role) => {
+                const group = contest.contributors.filter((c) => c.role === role)
+                if (!group.length) return null
+                return (
+                  <div key={role} className="flex items-center gap-1.5 flex-wrap">
+                    <span className="font-semibold text-text-secondary">{role === 'CONTRIBUTOR' ? '출제' : '검토'}:</span>
+                    {group.map((c) => (
+                      <Link key={c.id} href={`/users/${c.userId}`} className="flex items-center gap-1 px-1.5 py-0.5 bg-surface-2 rounded hover:bg-surface transition-colors">
+                        <Avatar name={c.user.name} image={c.user.image} size={16} />
+                        <span className="text-text-secondary text-xs">{c.user.name ?? '?'}</span>
+                      </Link>
+                    ))}
+                  </div>
+                )
+              })}
+            </div>
+          </>
+        )}
 
         {/* Action buttons */}
         <div className="flex flex-wrap gap-2">
@@ -332,9 +473,25 @@ export default function ContestPage() {
                       </div>
                     </div>
                     <div>
-                      <label className="text-xs text-muted mb-1 block">내용 (마크다운)</label>
-                      <textarea value={editDraft.content ?? ''} onChange={(e) => setEditDraft((d) => ({ ...d, content: e.target.value }))}
-                        rows={6} className="w-full bg-background border border-border rounded-lg px-3 py-2 text-sm text-text-primary focus:outline-none focus:border-accent resize-y font-mono" />
+                      <div className="flex items-center justify-between mb-1">
+                        <label className="text-xs text-muted block">내용 (마크다운)</label>
+                        <button type="button" onClick={() => setEditPreview((v) => !v)}
+                          className={`flex items-center gap-1 px-2 py-0.5 rounded text-xs transition-colors ${editPreview ? 'bg-accent/10 text-accent' : 'text-muted hover:text-text-secondary'}`}>
+                          {editPreview ? <><PenLine size={11} /> 편집</> : <><Eye size={11} /> 미리보기</>}
+                        </button>
+                      </div>
+                      {editPreview ? (
+                        <div className="w-full min-h-[144px] bg-background border border-border rounded-lg px-3 py-2 text-sm prose-content">
+                          <ReactMarkdown remarkPlugins={[remarkMath, remarkGfm]} rehypePlugins={[rehypeKatex]}>
+                            {editDraft.content || '*내용 없음*'}
+                          </ReactMarkdown>
+                        </div>
+                      ) : (
+                        <textarea
+                          ref={editTextareaRef}
+                          value={editDraft.content ?? ''} onChange={(e) => setEditDraft((d) => ({ ...d, content: e.target.value }))}
+                          rows={6} className="w-full bg-background border border-border rounded-lg px-3 py-2 text-sm text-text-primary focus:outline-none focus:border-accent resize-y font-mono" />
+                      )}
                     </div>
                     <div>
                       <label className="text-xs text-muted mb-1 block">정답</label>
@@ -363,22 +520,35 @@ export default function ContestPage() {
                           <div key={url} className="relative group">
                             {/* eslint-disable-next-line @next/next/no-img-element */}
                             <img src={url} alt="" className="w-14 h-14 object-cover rounded-lg border border-border" />
-                            <button type="button" onClick={() => setEditDraft((d) => ({ ...d, imageUrls: (d.imageUrls ?? []).filter((_, k) => k !== ui) }))}
+                            <button type="button" onClick={() => setEditDraft((d) => ({
+                              ...d,
+                              imageUrls: (d.imageUrls ?? []).filter((_, k) => k !== ui),
+                              content: (d.content ?? '').replace(`![이미지](${url})`, ''),
+                            }))}
                               className="absolute -top-1 -right-1 w-4 h-4 bg-red-500 text-white rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"><X size={8} /></button>
                           </div>
                         ))}
-                        <button type="button" onClick={() => fileInputRef.current?.click()} disabled={uploadingProblem === problem.id}
+                        <button type="button" onClick={() => editFileInputRef.current?.click()} disabled={uploadingProblem === problem.id}
                           className="w-14 h-14 border-2 border-dashed border-border rounded-lg flex flex-col items-center justify-center text-muted hover:border-accent hover:text-accent transition-colors disabled:opacity-50">
                           <ImagePlus size={13} /><span className="text-xs">{uploadingProblem === problem.id ? '...' : '추가'}</span>
                         </button>
-                        <input ref={fileInputRef} type="file" accept="image/*" className="hidden"
-                          onChange={(e) => { const f = e.target.files?.[0]; if (f) { const fd = new FormData(); fd.append('file', f); fetch('/api/upload', { method: 'POST', body: fd }).then((r) => r.json()).then((d) => { setEditDraft((draft) => ({ ...draft, imageUrls: [...(draft.imageUrls ?? []), d.url] })) }); e.target.value = '' } }} />
+                        <input ref={editFileInputRef} type="file" accept="image/*" className="hidden"
+                          onChange={(e) => {
+                            const f = e.target.files?.[0]
+                            if (f) {
+                              const fd = new FormData(); fd.append('file', f)
+                              fetch('/api/upload', { method: 'POST', body: fd })
+                                .then((r) => r.json())
+                                .then((d) => insertEditImageAtCursor(d.url))
+                              e.target.value = ''
+                            }
+                          }} />
                       </div>
                     </div>
                     <div className="flex items-center justify-between">
                       <button type="button" onClick={() => setEditDraft((d) => ({ ...d, allowRetry: !d.allowRetry }))}
                         className={`flex items-center gap-1 px-2 py-1 rounded text-xs transition-colors ${editDraft.allowRetry !== false ? 'text-green-600 bg-green-50 border border-green-200' : 'text-red-500 bg-red-50 border border-red-200'}`}>
-                        {editDraft.allowRetry !== false ? <><RefreshCw size={10} /> 재시도 허용</> : <><RefreshCwOff size={10} /> 재시도 불가</>}
+                        {editDraft.allowRetry !== false ? <><RefreshCw size={10} /> 재시도 허용</> : <><Ban size={10} /> 재시도 불가</>}
                       </button>
                       <button onClick={() => saveProblemEdit(problem.id)} disabled={saving}
                         className="flex items-center gap-1.5 px-4 py-2 rounded-lg bg-accent text-white text-sm font-semibold hover:bg-accent-dim transition-colors disabled:opacity-50">
@@ -390,7 +560,7 @@ export default function ContestPage() {
                   <div className="border-t border-border pt-3 space-y-3">
                     {problem.allowRetry === false && (
                       <span className="inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded bg-red-50 border border-red-200 text-red-500">
-                        <RefreshCwOff size={10} /> 재시도 불가
+                        <Ban size={10} /> 재시도 불가
                       </span>
                     )}
                     <div className="prose-content">

@@ -118,7 +118,7 @@ export function PostEditor() {
       })
       if (!res.ok) { toast.error((await res.json()).error ?? '오류가 발생했습니다'); return }
       const post = await res.json()
-      toast.success('게시글이 등록되었습니다! +10pt')
+      toast.success('게시글이 등록되었습니다!')
       router.push(`/post/${post.id}`)
     } finally {
       setLoading(false)
@@ -314,7 +314,7 @@ export function PostEditor() {
           disabled={loading || !title.trim() || !content.trim()}
           className="px-5 py-2 rounded-lg bg-accent text-white text-sm font-semibold hover:bg-accent-dim transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
         >
-          {loading ? '등록 중...' : '등록하기 (+10pt)'}
+          {loading ? '등록 중...' : '등록하기'}
         </button>
       </div>
     </div>

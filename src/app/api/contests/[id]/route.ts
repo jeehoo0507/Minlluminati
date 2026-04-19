@@ -41,7 +41,7 @@ export async function GET(_: NextRequest, { params }: { params: { id: string } }
     include: {
       organizer: { select: { id: true, name: true, image: true, points: true } },
       problems: { orderBy: { order: 'asc' } },
-      contributors: { include: { user: { select: { id: true, name: true } } } },
+      contributors: { include: { user: { select: { id: true, name: true, image: true, points: true } } } },
       _count: { select: { participants: true } },
     },
   })
@@ -60,9 +60,15 @@ export async function GET(_: NextRequest, { params }: { params: { id: string } }
 
   // Hide answers from non-organizers (contributors can see answers for review)
   const canSeeAnswers = isOrganizer || isAdmin || isContributor
+  const parseProblems = (ps: typeof contest.problems) =>
+    ps.map((p) => ({
+      ...p,
+      imageUrls: (() => { try { return JSON.parse(p.imageUrls as string) } catch { return [] } })(),
+      extraAnswers: (() => { try { return JSON.parse(p.extraAnswers as string) } catch { return [] } })(),
+    }))
   const problems = canSeeAnswers
-    ? contest.problems
-    : contest.problems.map(({ answer: _a, ...p }) => p)
+    ? parseProblems(contest.problems)
+    : parseProblems(contest.problems).map(({ answer: _a, ...p }) => p)
 
   // My participation & submissions
   let myParticipant = null
@@ -101,12 +107,31 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
     return NextResponse.json(updated)
   }
 
+  // Handle contributors update: resolve queries to user IDs, then replace all
+  if (Array.isArray(data.contributors)) {
+    const resolved: { userId: string; role: string }[] = []
+    for (const c of data.contributors) {
+      const u = await prisma.user.findFirst({
+        where: { OR: [{ email: c.query }, { name: c.query }] },
+        select: { id: true },
+      })
+      if (u) resolved.push({ userId: u.id, role: c.role })
+    }
+    await prisma.contestContributor.deleteMany({ where: { contestId: params.id } })
+    if (resolved.length > 0) {
+      await prisma.contestContributor.createMany({
+        data: resolved.map((r) => ({ contestId: params.id, ...r })),
+      })
+    }
+  }
+
   const updated = await prisma.contest.update({
     where: { id: params.id },
     data: {
       ...(data.status ? { status: data.status } : {}),
       ...(data.title ? { title: data.title } : {}),
       ...(data.description !== undefined ? { description: data.description } : {}),
+      ...(data.rules !== undefined ? { rules: data.rules } : {}),
       ...(data.prize1 !== undefined ? { prize1: data.prize1 ? Number(data.prize1) : null } : {}),
       ...(data.prize2 !== undefined ? { prize2: data.prize2 ? Number(data.prize2) : null } : {}),
       ...(data.prize3 !== undefined ? { prize3: data.prize3 ? Number(data.prize3) : null } : {}),

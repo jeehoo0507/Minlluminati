@@ -1,7 +1,6 @@
 import { prisma } from './db'
 
 export const POINTS = {
-  POST_CREATE: 0,
   LIKE_RECEIVED: 5,
 } as const
 
@@ -33,13 +32,6 @@ export function getTier(points: number) {
   return TIERS.findLast((t) => points >= t.min) ?? TIERS[0]
 }
 
-export async function awardPostPoints(userId: string, postId: string, subject?: string) {
-  await prisma.$transaction([
-    prisma.user.update({ where: { id: userId }, data: { points: { increment: POINTS.POST_CREATE } } }),
-    prisma.post.update({ where: { id: postId }, data: { pointsAwarded: { increment: POINTS.POST_CREATE } } }),
-    prisma.pointHistory.create({ data: { userId, delta: POINTS.POST_CREATE, reason: '문제 등록', subject } }),
-  ])
-}
 
 export async function awardLikePoints(postAuthorId: string, postId: string, subject?: string | null, amount: number = POINTS.LIKE_RECEIVED) {
   if (amount <= 0) return

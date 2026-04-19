@@ -56,7 +56,16 @@ export default function AdminPage() {
   const [tierConfig, setTierConfig] = useState<{ name: string; min: number; max: number; color: string; bg: string }[]>(TIERS.map(t => ({ ...t, max: t.max === Infinity ? Infinity : Number(t.max) })))
   const [problemTierConfig, setProblemTierConfig] = useState<{ name: string; min: number; max: number; color: string; bg: string }[]>([])
   const [likePoints, setLikePoints] = useState(5)
+  const [dailyPenalty, setDailyPenalty] = useState(10)
   const [tierSaving, setTierSaving] = useState(false)
+  const [dailyStatus, setDailyStatus] = useState<{
+    date: string; lastRunDate: string | null; alreadyRan: boolean;
+    posted: { id: string; name?: string | null; image?: string | null; points: number }[];
+    notPosted: { id: string; name?: string | null; image?: string | null; points: number }[];
+  } | null>(null)
+  const [dailyLoading, setDailyLoading] = useState(false)
+  const [penaltyRunning, setPenaltyRunning] = useState(false)
+  const [penalizingUser, setPenalizingUser] = useState<string | null>(null)
   const [contestPrizes, setContestPrizes] = useState<Record<string, { p1: number; p2: number; p3: number }>>({})
   const [editingContestPrize, setEditingContestPrize] = useState<string | null>(null)
   const [allowedEmails, setAllowedEmails] = useState<{ id: string; email: string; usedAt: string | null; createdAt: string }[]>([])
@@ -125,6 +134,48 @@ export default function AdminPage() {
     } finally { setNoticeSending(false) }
   }
 
+  async function loadDailyStatus() {
+    setDailyLoading(true)
+    try {
+      const res = await fetch('/api/admin/daily-penalty')
+      if (res.ok) setDailyStatus(await res.json())
+    } finally { setDailyLoading(false) }
+  }
+
+  async function runDailyPenalty(force = false) {
+    setPenaltyRunning(true)
+    try {
+      const res = await fetch('/api/admin/daily-penalty', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ force }),
+      })
+      const d = await res.json()
+      if (res.ok) {
+        if (d.skipped) toast.success('오늘 이미 실행됨 (건너뜀)')
+        else toast.success(`차감 완료: ${d.penalizedCount}명 -${d.penalty}pt`)
+        loadDailyStatus()
+      } else toast.error(d.error ?? '오류')
+    } finally { setPenaltyRunning(false) }
+  }
+
+  async function penalizeUser(userId: string) {
+    setPenalizingUser(userId)
+    try {
+      const res = await fetch('/api/admin/daily-penalty', {
+        method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userId }),
+      })
+      const d = await res.json()
+      if (res.ok) {
+        toast.success(`차감 완료 (-${d.penalty}pt)`)
+        setDailyStatus((prev) => prev ? {
+          ...prev,
+          notPosted: prev.notPosted.map((u) => u.id === userId ? { ...u, points: d.newPoints } : u),
+        } : prev)
+      } else toast.error(d.error ?? '오류')
+    } finally { setPenalizingUser(null) }
+  }
+
   async function loadTierConfig() {
     const res = await fetch('/api/admin/config')
     if (res.ok) {
@@ -132,6 +183,7 @@ export default function AdminPage() {
       setTierConfig(d.tiers ?? TIERS.map((t) => ({ name: t.name, min: t.min, max: t.max === Infinity ? Infinity : Number(t.max), color: t.color, bg: t.bg })))
       setProblemTierConfig(d.problemTiers ?? [])
       setLikePoints(d.points?.likeReceived ?? 5)
+      setDailyPenalty(d.points?.dailyPenalty ?? 10)
     }
   }
 
@@ -318,7 +370,7 @@ export default function AdminPage() {
         body: JSON.stringify({
           tiers: tierConfig,
           problemTiers: problemTierConfig,
-          points: { likeReceived: likePoints },
+          points: { likeReceived: likePoints, dailyPenalty },
         }),
       })
       if (res.ok) toast.success('설정 저장 완료')
@@ -340,6 +392,7 @@ export default function AdminPage() {
     { key: 'posts', label: '게시글 관리' },
     { key: 'allcontests', label: '대회 관리' },
     { key: 'tiers', label: '티어 설정' },
+    { key: 'daily', label: '일일 현황' },
     { key: 'notice', label: '공지 발송' },
     ...(isOwner ? [{ key: 'reset', label: '⚠️ 초기화' }] : []),
   ]
@@ -373,6 +426,7 @@ export default function AdminPage() {
               if (key === 'allcontests' && contests.length === 0) loadContests()
               if (key === 'requests') loadPermRequests()
               if (key === 'tiers') loadTierConfig()
+              if (key === 'daily') loadDailyStatus()
               if (key === 'emaillist') loadAllowedEmails()
             }}
             className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${tab === key ? 'bg-accent text-background' : 'text-text-secondary hover:text-text-primary'}`}
@@ -513,6 +567,17 @@ export default function AdminPage() {
             <div className="flex items-center gap-3">
               <label className="text-sm text-text-secondary">추천 1회당 지급 포인트</label>
               <input type="number" min={0} value={likePoints} onChange={(e) => setLikePoints(Number(e.target.value))}
+                className="w-24 bg-background border border-border rounded px-2 py-1 text-sm text-text-primary focus:outline-none focus:border-accent" />
+              <span className="text-sm text-muted">pt</span>
+            </div>
+          </div>
+
+          {/* Daily penalty */}
+          <div className="bg-surface border border-border rounded-2xl p-6 space-y-3">
+            <h2 className="text-sm font-semibold text-text-primary flex items-center gap-2"><Sliders size={15} /> 일일 미작성 패널티</h2>
+            <div className="flex items-center gap-3">
+              <label className="text-sm text-text-secondary">하루 미작성 시 차감 포인트</label>
+              <input type="number" min={0} value={dailyPenalty} onChange={(e) => setDailyPenalty(Number(e.target.value))}
                 className="w-24 bg-background border border-border rounded px-2 py-1 text-sm text-text-primary focus:outline-none focus:border-accent" />
               <span className="text-sm text-muted">pt</span>
             </div>
@@ -768,6 +833,85 @@ export default function AdminPage() {
                 ))}
               </tbody>
             </table>
+          )}
+        </div>
+      )}
+
+      {/* Daily status */}
+      {tab === 'daily' && (
+        <div className="space-y-4">
+          <div className="bg-surface border border-border rounded-2xl p-6 space-y-4">
+            <div className="flex items-center justify-between flex-wrap gap-3">
+              <div>
+                <h2 className="text-sm font-semibold text-text-primary">오늘의 작성 현황</h2>
+                {dailyStatus && (
+                  <p className="text-xs text-muted mt-1">
+                    {dailyStatus.date}
+                    {dailyStatus.lastRunDate && ` · 마지막 차감: ${dailyStatus.lastRunDate}`}
+                    {dailyStatus.alreadyRan && <span className="ml-2 text-emerald-500">✓ 오늘 차감 완료</span>}
+                  </p>
+                )}
+              </div>
+              <button onClick={() => loadDailyStatus()} disabled={dailyLoading}
+                className="px-3 py-1.5 rounded-lg border border-border text-xs text-text-secondary hover:text-text-primary transition-colors disabled:opacity-50">
+                {dailyLoading ? '로딩 중...' : '새로고침'}
+              </button>
+            </div>
+          </div>
+
+          {dailyStatus && (
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="bg-surface border border-border rounded-2xl overflow-hidden">
+                <div className="px-4 py-3 border-b border-border bg-emerald-500/10 flex items-center justify-between">
+                  <h3 className="text-sm font-semibold text-emerald-600">오늘 업로드 완료</h3>
+                  <span className="text-xs font-bold text-emerald-600">{dailyStatus.posted.length}명</span>
+                </div>
+                {dailyStatus.posted.length === 0 ? (
+                  <div className="text-center py-8 text-text-secondary text-xs">아직 아무도 올리지 않았습니다</div>
+                ) : (
+                  <ul className="divide-y divide-border">
+                    {dailyStatus.posted.map((u) => (
+                      <li key={u.id} className="px-4 py-2.5 flex items-center gap-2">
+                        <Avatar name={u.name} image={u.image} size={24} />
+                        <span className="text-sm text-text-primary flex-1">{u.name ?? '?'}</span>
+                        <TierBadge points={u.points} showPoints />
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+
+              <div className="bg-surface border border-border rounded-2xl overflow-hidden">
+                <div className="px-4 py-3 border-b border-border bg-red-500/10 flex items-center justify-between">
+                  <h3 className="text-sm font-semibold text-red-500">미작성 (패널티 대상)</h3>
+                  <span className="text-xs font-bold text-red-500">{dailyStatus.notPosted.length}명</span>
+                </div>
+                {dailyStatus.notPosted.length === 0 ? (
+                  <div className="text-center py-8 text-text-secondary text-xs">모두 작성했습니다!</div>
+                ) : (
+                  <ul className="divide-y divide-border">
+                    {dailyStatus.notPosted.map((u) => (
+                      <li key={u.id} className="px-4 py-2.5 flex items-center gap-2">
+                        <Avatar name={u.name} image={u.image} size={24} />
+                        <span className="text-sm text-text-primary flex-1">{u.name ?? '?'}</span>
+                        <TierBadge points={u.points} showPoints />
+                        <button
+                          onClick={() => penalizeUser(u.id)}
+                          disabled={penalizingUser === u.id || u.points === 0}
+                          className="ml-1 px-2 py-1 rounded-lg bg-red-500/10 text-red-500 text-xs font-semibold hover:bg-red-500/20 transition-colors disabled:opacity-40"
+                        >
+                          {penalizingUser === u.id ? '...' : '차감'}
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+            </div>
+          )}
+
+          {!dailyStatus && !dailyLoading && (
+            <div className="text-center py-12 text-text-secondary text-sm">새로고침을 눌러 현황을 확인하세요</div>
           )}
         </div>
       )}

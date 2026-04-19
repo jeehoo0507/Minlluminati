@@ -2,7 +2,11 @@
 import { useState, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import { useSession } from 'next-auth/react'
-import { Plus, Trash2, UserPlus, X, ImagePlus, RefreshCw, RefreshCwOff } from 'lucide-react'
+import { Plus, Trash2, UserPlus, X, ImagePlus, RefreshCw, Ban, Eye } from 'lucide-react'
+import ReactMarkdown from 'react-markdown'
+import remarkMath from 'remark-math'
+import rehypeKatex from 'rehype-katex'
+import remarkGfm from 'remark-gfm'
 import toast from 'react-hot-toast'
 
 interface Problem {
@@ -20,6 +24,7 @@ export default function NewContestPage() {
   const { data: session } = useSession()
   const router = useRouter()
   const fileRefs = useRef<(HTMLInputElement | null)[]>([])
+  const textareaRefs = useRef<(HTMLTextAreaElement | null)[]>([])
 
   const [title, setTitle] = useState('')
   const [description, setDescription] = useState('')
@@ -36,6 +41,7 @@ export default function NewContestPage() {
   const [contribRole, setContribRole] = useState<'CONTRIBUTOR' | 'REVIEWER'>('CONTRIBUTOR')
   const [loading, setLoading] = useState(false)
   const [uploadingIdx, setUploadingIdx] = useState<number | null>(null)
+  const [previewProblem, setPreviewProblem] = useState<number | null>(null)
 
   const labels = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'
 
@@ -45,18 +51,35 @@ export default function NewContestPage() {
     setProblems((p) => p.map((pr, idx) => idx === i ? { ...pr, [field]: value } : pr))
   }
 
+  function insertImageAtCursor(idx: number, url: string) {
+    const insert = `![이미지](${url})`
+    const ta = textareaRefs.current[idx]
+    const start = ta?.selectionStart ?? null
+    const end = ta?.selectionEnd ?? null
+    setProblems((prev) => prev.map((p, i) => {
+      if (i !== idx) return p
+      const s = start ?? p.content.length
+      const e = end ?? p.content.length
+      return { ...p, content: p.content.slice(0, s) + insert + p.content.slice(e), imageUrls: [...p.imageUrls, url] }
+    }))
+    if (ta && start !== null) {
+      requestAnimationFrame(() => {
+        ta.selectionStart = ta.selectionEnd = start + insert.length
+        ta.focus()
+      })
+    }
+  }
+
   async function uploadImages(idx: number, files: File[]) {
     if (!files.length) return
     setUploadingIdx(idx)
     try {
-      const urls: string[] = []
       for (const file of files) {
         const fd = new FormData(); fd.append('file', file)
         const res = await fetch('/api/upload', { method: 'POST', body: fd })
-        if (res.ok) { const d = await res.json(); urls.push(d.url) }
+        if (res.ok) { const { url } = await res.json(); insertImageAtCursor(idx, url) }
         else toast.error(`업로드 실패: ${file.name}`)
       }
-      setProblems((p) => p.map((pr, i) => i === idx ? { ...pr, imageUrls: [...pr.imageUrls, ...urls] } : pr))
     } finally { setUploadingIdx(null) }
   }
 
@@ -217,7 +240,7 @@ export default function NewContestPage() {
                   className={`flex items-center gap-1 px-2 py-1 rounded text-xs transition-colors ${p.allowRetry ? 'text-green-600 bg-green-50 border border-green-200' : 'text-red-500 bg-red-50 border border-red-200'}`}
                   title={p.allowRetry ? '재시도 허용됨 (클릭하면 불가로)' : '재시도 불가 (클릭하면 허용으로)'}
                 >
-                  {p.allowRetry ? <><RefreshCw size={10} /> 재시도 허용</> : <><RefreshCwOff size={10} /> 재시도 불가</>}
+                  {p.allowRetry ? <><RefreshCw size={10} /> 재시도 허용</> : <><Ban size={10} /> 재시도 불가</>}
                 </button>
                 {problems.length > 1 && (
                   <button onClick={() => setProblems((prev) => prev.filter((_, idx) => idx !== i))} className="text-muted hover:text-red-400 transition-colors">
@@ -234,10 +257,26 @@ export default function NewContestPage() {
                 className="w-full bg-background border border-border rounded-lg px-3 py-2 text-sm text-text-primary focus:outline-none focus:border-accent" />
             </div>
             <div>
-              <label className="block text-xs font-medium text-text-secondary mb-1">문제 내용 (Markdown 지원)</label>
-              <textarea value={p.content} onChange={(e) => updateProblem(i, 'content', e.target.value)} rows={5}
-                placeholder="문제 내용, 수식 등 ($x^2$ 형식)"
-                className="w-full bg-background border border-border rounded-lg px-3 py-2 text-sm text-text-primary focus:outline-none focus:border-accent resize-y font-mono" />
+              <div className="flex items-center justify-between mb-1">
+                <label className="text-xs font-medium text-text-secondary">문제 내용 (Markdown 지원)</label>
+                <button type="button" onClick={() => setPreviewProblem(previewProblem === i ? null : i)}
+                  className={`flex items-center gap-1 px-2 py-0.5 rounded text-xs transition-colors ${previewProblem === i ? 'bg-accent/10 text-accent' : 'text-muted hover:text-text-secondary'}`}>
+                  <Eye size={11} /> {previewProblem === i ? '편집' : '미리보기'}
+                </button>
+              </div>
+              {previewProblem === i ? (
+                <div className="w-full min-h-[120px] bg-background border border-border rounded-lg px-3 py-2 text-sm prose-content">
+                  <ReactMarkdown remarkPlugins={[remarkMath, remarkGfm]} rehypePlugins={[rehypeKatex]}>
+                    {p.content || '*내용 없음*'}
+                  </ReactMarkdown>
+                </div>
+              ) : (
+                <textarea
+                  ref={(el) => { textareaRefs.current[i] = el }}
+                  value={p.content} onChange={(e) => updateProblem(i, 'content', e.target.value)} rows={5}
+                  placeholder="문제 내용, 수식 등 ($x^2$ 형식) — 이미지 버튼으로 커서 위치에 삽입"
+                  className="w-full bg-background border border-border rounded-lg px-3 py-2 text-sm text-text-primary focus:outline-none focus:border-accent resize-y font-mono" />
+              )}
             </div>
 
             {/* Images */}
@@ -250,7 +289,11 @@ export default function NewContestPage() {
                     <img src={url} alt="" className="w-16 h-16 object-cover rounded-lg border border-border" />
                     <button
                       type="button"
-                      onClick={() => updateProblem(i, 'imageUrls', p.imageUrls.filter((_, k) => k !== ui))}
+                      onClick={() => setProblems((prev) => prev.map((pr, pi) => pi !== i ? pr : {
+                        ...pr,
+                        imageUrls: pr.imageUrls.filter((_, k) => k !== ui),
+                        content: pr.content.replace(`![이미지](${url})`, ''),
+                      }))}
                       className="absolute -top-1.5 -right-1.5 w-4 h-4 bg-red-500 text-white rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
                     ><X size={9} /></button>
                   </div>

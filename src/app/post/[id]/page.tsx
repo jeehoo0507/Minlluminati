@@ -31,6 +31,7 @@ export default function PostPage() {
   } | null>(null)
   const [liked, setLiked] = useState(false)
   const [likeCount, setLikeCount] = useState(0)
+  const [likePoints, setLikePoints] = useState(5)
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
@@ -41,6 +42,7 @@ export default function PostPage() {
       setPost(p)
       setLiked(l.liked)
       setLikeCount(l.count)
+      if (l.likePoints != null) setLikePoints(l.likePoints)
     }).finally(() => setLoading(false))
   }, [id])
 
@@ -51,7 +53,11 @@ export default function PostPage() {
       const data = await res.json()
       setLiked(data.liked)
       setLikeCount(data.count)
-      if (data.liked) toast.success('+2pt 추천!')
+      if (data.likePoints != null) setLikePoints(data.likePoints)
+      if (data.liked) toast.success(`+${data.likePoints ?? likePoints}pt 추천!`)
+    } else {
+      const err = await res.json().catch(() => ({}))
+      toast.error(err.error ?? '오류가 발생했습니다')
     }
   }
 
@@ -166,7 +172,7 @@ export default function PostPage() {
           >
             <Heart size={15} className={liked ? 'fill-current' : ''} />
             <span className="text-sm font-medium">{likeCount}</span>
-            <span className="text-xs">{liked ? '추천 취소' : '추천 (+2pt)'}</span>
+            <span className="text-xs">{liked ? '추천 취소' : `추천 (+${likePoints}pt)`}</span>
           </button>
           <button
             onClick={() => {

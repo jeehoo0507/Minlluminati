@@ -14,7 +14,7 @@ export async function GET() {
   return NextResponse.json({
     tiers: userTiersCfg ? JSON.parse(userTiersCfg.value) : TIERS,
     problemTiers: problemTiersCfg ? JSON.parse(problemTiersCfg.value) : PROBLEM_TIERS,
-    points: pointsCfg ? JSON.parse(pointsCfg.value) : { likeReceived: POINTS.LIKE_RECEIVED },
+    points: pointsCfg ? JSON.parse(pointsCfg.value) : { likeReceived: POINTS.LIKE_RECEIVED, dailyPenalty: 10 },
   })
 }
 

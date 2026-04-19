@@ -36,7 +36,7 @@ export async function GET(_: NextRequest, { params }: { params: { id: string } }
   for (const p of user.posts) {
     const d = new Date(p.createdAt)
     if (d < since) continue
-    const key = d.toISOString().slice(0, 10)
+    const key = d.toLocaleDateString('sv-SE', { timeZone: 'Asia/Seoul' })
     streakMap[key] = (streakMap[key] ?? 0) + 1
   }
 

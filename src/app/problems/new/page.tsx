@@ -11,6 +11,7 @@ export default function NewProblemPage() {
   const { data: session } = useSession()
   const router = useRouter()
   const fileRef = useRef<HTMLInputElement>(null)
+  const textareaRef = useRef<HTMLTextAreaElement>(null)
 
   const [title, setTitle] = useState('')
   const [content, setContent] = useState('')
@@ -30,24 +31,39 @@ export default function NewProblemPage() {
     )
   }
 
+  function insertImageAtCursor(url: string) {
+    const insert = `![이미지](${url})`
+    const ta = textareaRef.current
+    const start = ta?.selectionStart ?? null
+    const end = ta?.selectionEnd ?? null
+    const s = start ?? content.length
+    const e = end ?? content.length
+    setContent((c) => c.slice(0, s) + insert + c.slice(e))
+    setImageUrls((prev) => [...prev, url])
+    if (ta && start !== null) {
+      requestAnimationFrame(() => {
+        ta.selectionStart = ta.selectionEnd = start + insert.length
+        ta.focus()
+      })
+    }
+  }
+
   async function handleImageUpload(e: React.ChangeEvent<HTMLInputElement>) {
     const files = Array.from(e.target.files ?? [])
     if (!files.length) return
     setUploading(true)
     try {
-      const uploaded: string[] = []
       for (const file of files) {
         const fd = new FormData()
         fd.append('file', file)
         const res = await fetch('/api/upload', { method: 'POST', body: fd })
         if (res.ok) {
           const data = await res.json()
-          uploaded.push(data.url)
+          insertImageAtCursor(data.url)
         } else {
           toast.error('이미지 업로드 실패')
         }
       }
-      setImageUrls((prev) => [...prev, ...uploaded])
     } finally {
       setUploading(false)
       if (fileRef.current) fileRef.current.value = ''
@@ -132,9 +148,10 @@ export default function NewProblemPage() {
           <label className="text-sm font-medium text-text-primary">문제 내용 *</label>
           <p className="text-xs text-muted">마크다운과 수식(KaTeX)을 지원합니다. 수식은 $...$ 또는 $$...$$ 사용</p>
           <textarea
+            ref={textareaRef}
             value={content}
             onChange={(e) => setContent(e.target.value)}
-            placeholder="문제 내용을 입력하세요. 마크다운과 $수식$ 사용 가능"
+            placeholder="문제 내용을 입력하세요. 마크다운과 $수식$ 사용 가능 — 이미지 버튼으로 커서 위치에 삽입"
             rows={8}
             className="w-full bg-background border border-border rounded-lg px-3 py-2 text-sm text-text-primary placeholder:text-muted focus:outline-none focus:border-accent resize-y font-mono"
             required
@@ -151,7 +168,10 @@ export default function NewProblemPage() {
                 <img src={url} alt={`img-${i}`} className="w-20 h-20 object-cover rounded-lg border border-border" />
                 <button
                   type="button"
-                  onClick={() => setImageUrls((prev) => prev.filter((u) => u !== url))}
+                  onClick={() => {
+                    setImageUrls((prev) => prev.filter((u) => u !== url))
+                    setContent((c) => c.replace(`![이미지](${url})`, ''))
+                  }}
                   className="absolute -top-1.5 -right-1.5 w-5 h-5 bg-red-500 text-white rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
                 >
                   <X size={10} />
