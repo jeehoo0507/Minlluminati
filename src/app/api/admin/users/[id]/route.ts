@@ -16,10 +16,18 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
   }
   const body = await req.json()
 
-  // Role change — no password needed
+  // Role change — OWNER only
   if (body.role !== undefined) {
+    if (!session.user.isOwner) {
+      return NextResponse.json({ error: '역할 변경은 최고 관리자만 가능합니다' }, { status: 403 })
+    }
     if (!['USER', 'ADMIN'].includes(body.role)) {
       return NextResponse.json({ error: '잘못된 역할입니다' }, { status: 400 })
+    }
+    // OWNER 계정은 역할 변경 불가
+    const target = await prisma.user.findUnique({ where: { id: params.id }, select: { role: true } })
+    if (target?.role === 'OWNER') {
+      return NextResponse.json({ error: '최고 관리자 계정은 변경할 수 없습니다' }, { status: 403 })
     }
     const user = await prisma.user.update({ where: { id: params.id }, data: { role: body.role } })
     return NextResponse.json({ id: user.id, role: user.role })

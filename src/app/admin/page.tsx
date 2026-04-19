@@ -6,6 +6,7 @@ import { Avatar } from '@/components/ui/Avatar'
 import { TierBadge } from '@/components/ui/TierBadge'
 import { AdminConfirmModal } from '@/components/ui/AdminConfirmModal'
 import { timeAgo } from '@/lib/utils'
+import Link from 'next/link'
 import { UserPlus, Trash2, Shield, ShieldOff, CheckCircle, XCircle, Swords, Pencil, RotateCcw, Sliders, Bell } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { TIERS } from '@/lib/scoring'
@@ -43,7 +44,7 @@ export default function AdminPage() {
   const [contests, setContests] = useState<AnyContest[]>([])
   const [inviteEmail, setInviteEmail] = useState('')
   const [loading, setLoading] = useState(false)
-  const [tab, setTab] = useState<'users' | 'invite' | 'contests' | 'organizers' | 'posts' | 'allcontests' | 'reset' | 'tiers' | 'requests'>('users')
+  const [tab, setTab] = useState<string>('users')
   const [pendingContests, setPendingContests] = useState<PendingContest[]>([])
   const [organizers, setOrganizers] = useState<OrganizerRecord[]>([])
   const [orgEmail, setOrgEmail] = useState('')
@@ -53,9 +54,15 @@ export default function AdminPage() {
   const [confirmAction, setConfirmAction] = useState<ConfirmAction>(null)
   const [permRequests, setPermRequests] = useState<PermReq[]>([])
   const [tierConfig, setTierConfig] = useState<{ name: string; min: number; max: number; color: string; bg: string }[]>(TIERS.map(t => ({ ...t, max: t.max === Infinity ? Infinity : Number(t.max) })))
+  const [problemTierConfig, setProblemTierConfig] = useState<{ name: string; min: number; max: number; color: string; bg: string }[]>([])
+  const [likePoints, setLikePoints] = useState(5)
   const [tierSaving, setTierSaving] = useState(false)
   const [contestPrizes, setContestPrizes] = useState<Record<string, { p1: number; p2: number; p3: number }>>({})
   const [editingContestPrize, setEditingContestPrize] = useState<string | null>(null)
+  const [allowedEmails, setAllowedEmails] = useState<{ id: string; email: string; usedAt: string | null; createdAt: string }[]>([])
+  const [noticeTitle, setNoticeTitle] = useState('')
+  const [noticeContent, setNoticeContent] = useState('')
+  const [noticeSending, setNoticeSending] = useState(false)
 
   useEffect(() => {
     if (status === 'loading') return
@@ -64,7 +71,7 @@ export default function AdminPage() {
   }, [session, status, router])
 
   async function loadAll() {
-    loadUsers(); loadPendingContests(); loadOrganizers()
+    loadUsers(); loadPendingContests(); loadOrganizers(); loadAllowedEmails()
   }
   async function loadUsers() {
     const res = await fetch('/api/admin/users')
@@ -90,9 +97,42 @@ export default function AdminPage() {
     const res = await fetch('/api/admin/permission-requests')
     if (res.ok) setPermRequests(await res.json())
   }
+  async function loadAllowedEmails() {
+    const res = await fetch('/api/admin/allowed-emails')
+    if (res.ok) setAllowedEmails(await res.json())
+  }
+
+  async function deleteAllowedEmail(id: string) {
+    const res = await fetch('/api/admin/allowed-emails', {
+      method: 'DELETE', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id }),
+    })
+    if (res.ok) setAllowedEmails((p) => p.filter((e) => e.id !== id))
+    else toast.error('삭제 실패')
+  }
+
+  async function sendAdminNotice() {
+    if (!noticeTitle.trim() || !noticeContent.trim()) { toast.error('제목과 내용을 입력해주세요'); return }
+    setNoticeSending(true)
+    try {
+      const res = await fetch('/api/admin/notifications', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ title: noticeTitle.trim(), content: noticeContent.trim() }),
+      })
+      const d = await res.json()
+      if (res.ok) { toast.success(`공지를 ${d.count}명에게 발송했습니다`); setNoticeTitle(''); setNoticeContent('') }
+      else toast.error(d.error ?? '오류')
+    } finally { setNoticeSending(false) }
+  }
+
   async function loadTierConfig() {
     const res = await fetch('/api/admin/config')
-    if (res.ok) setTierConfig(await res.json())
+    if (res.ok) {
+      const d = await res.json()
+      setTierConfig(d.tiers ?? TIERS.map((t) => ({ name: t.name, min: t.min, max: t.max === Infinity ? Infinity : Number(t.max), color: t.color, bg: t.bg })))
+      setProblemTierConfig(d.problemTiers ?? [])
+      setLikePoints(d.points?.likeReceived ?? 5)
+    }
   }
 
   async function invite() {
@@ -275,26 +315,34 @@ export default function AdminPage() {
     try {
       const res = await fetch('/api/admin/config', {
         method: 'PATCH', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ tiers: tierConfig }),
+        body: JSON.stringify({
+          tiers: tierConfig,
+          problemTiers: problemTierConfig,
+          points: { likeReceived: likePoints },
+        }),
       })
-      if (res.ok) toast.success('티어 설정 저장 완료')
+      if (res.ok) toast.success('설정 저장 완료')
       else toast.error('저장 실패')
     } finally { setTierSaving(false) }
   }
 
   if (status === 'loading' || session?.user?.role !== 'ADMIN') return null
 
-  const TABS = [
+  const isOwner = session.user.isOwner
+
+  const TABS: { key: string; label: string }[] = [
     { key: 'users', label: `유저 목록 (${users.length})` },
-    { key: 'invite', label: `이메일 초대${permRequests.length > 0 ? ` (${permRequests.length})` : ''}` },
+    { key: 'invite', label: '이메일 초대' },
+    { key: 'emaillist', label: `초대 목록 (${allowedEmails.length})` },
     { key: 'requests', label: `권한 요청${permRequests.length > 0 ? ` (${permRequests.length})` : ''}` },
     { key: 'contests', label: `대회 검토${pendingContests.length > 0 ? ` (${pendingContests.length})` : ''}` },
     { key: 'organizers', label: '대회 권한' },
     { key: 'posts', label: '게시글 관리' },
     { key: 'allcontests', label: '대회 관리' },
     { key: 'tiers', label: '티어 설정' },
-    { key: 'reset', label: '⚠️ 초기화' },
-  ] as const
+    { key: 'notice', label: '공지 발송' },
+    ...(isOwner ? [{ key: 'reset', label: '⚠️ 초기화' }] : []),
+  ]
 
   return (
     <div className="max-w-5xl mx-auto px-4 py-8 space-y-6">
@@ -325,6 +373,7 @@ export default function AdminPage() {
               if (key === 'allcontests' && contests.length === 0) loadContests()
               if (key === 'requests') loadPermRequests()
               if (key === 'tiers') loadTierConfig()
+              if (key === 'emaillist') loadAllowedEmails()
             }}
             className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${tab === key ? 'bg-accent text-background' : 'text-text-secondary hover:text-text-primary'}`}
           >
@@ -346,6 +395,70 @@ export default function AdminPage() {
               {loading ? '...' : '초대'}
             </button>
           </div>
+        </div>
+      )}
+
+      {/* Email list */}
+      {tab === 'emaillist' && (
+        <div className="bg-surface border border-border rounded-2xl overflow-hidden">
+          <div className="px-4 py-3 border-b border-border bg-surface-2 flex items-center justify-between">
+            <h2 className="text-sm font-semibold text-text-primary flex items-center gap-2"><UserPlus size={14} /> 초대된 이메일 목록</h2>
+            <span className="text-xs text-muted">{allowedEmails.length}개</span>
+          </div>
+          {allowedEmails.length === 0 ? (
+            <div className="text-center py-10 text-text-secondary text-sm">초대된 이메일이 없습니다</div>
+          ) : (
+            <table className="w-full text-sm">
+              <thead><tr className="border-b border-border">
+                <th className="text-left px-4 py-3 text-xs font-semibold text-text-secondary">이메일</th>
+                <th className="text-left px-4 py-3 text-xs font-semibold text-text-secondary hidden sm:table-cell">초대일</th>
+                <th className="text-left px-4 py-3 text-xs font-semibold text-text-secondary hidden md:table-cell">사용</th>
+                <th className="text-right px-4 py-3 text-xs font-semibold text-text-secondary">액션</th>
+              </tr></thead>
+              <tbody>
+                {allowedEmails.map((e) => (
+                  <tr key={e.id} className="border-b border-border last:border-0 hover:bg-surface-2 transition-colors">
+                    <td className="px-4 py-3 text-text-primary font-medium">{e.email}</td>
+                    <td className="px-4 py-3 text-muted text-xs hidden sm:table-cell">{timeAgo(e.createdAt)}</td>
+                    <td className="px-4 py-3 hidden md:table-cell">
+                      {e.usedAt ? <span className="text-xs text-green-600">✓ 사용됨</span> : <span className="text-xs text-muted">미사용</span>}
+                    </td>
+                    <td className="px-4 py-3">
+                      <div className="flex justify-end">
+                        <button onClick={() => deleteAllowedEmail(e.id)} className="p-1.5 rounded-lg text-muted hover:text-red-400 hover:bg-red-400/10 transition-colors">
+                          <Trash2 size={14} />
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+        </div>
+      )}
+
+      {/* Notice */}
+      {tab === 'notice' && (
+        <div className="bg-surface border border-border rounded-2xl p-6 space-y-4">
+          <h2 className="text-sm font-semibold text-text-primary flex items-center gap-2"><Bell size={14} /> 전체 공지 발송</h2>
+          <p className="text-xs text-text-secondary">모든 사용자에게 알림으로 공지를 보냅니다.</p>
+          <div>
+            <label className="block text-xs font-medium text-text-secondary mb-1.5">제목</label>
+            <input value={noticeTitle} onChange={(e) => setNoticeTitle(e.target.value)}
+              placeholder="공지 제목"
+              className="w-full bg-background border border-border rounded-lg px-3 py-2 text-sm text-text-primary focus:outline-none focus:border-accent" />
+          </div>
+          <div>
+            <label className="block text-xs font-medium text-text-secondary mb-1.5">내용</label>
+            <textarea value={noticeContent} onChange={(e) => setNoticeContent(e.target.value)}
+              rows={4} placeholder="공지 내용을 입력하세요"
+              className="w-full bg-background border border-border rounded-lg px-3 py-2 text-sm text-text-primary focus:outline-none focus:border-accent resize-none" />
+          </div>
+          <button onClick={sendAdminNotice} disabled={noticeSending || !noticeTitle.trim() || !noticeContent.trim()}
+            className="px-5 py-2 rounded-lg bg-accent text-background text-sm font-semibold hover:bg-accent-dim transition-colors disabled:opacity-50">
+            {noticeSending ? '발송 중...' : '전체 발송'}
+          </button>
         </div>
       )}
 
@@ -393,37 +506,74 @@ export default function AdminPage() {
 
       {/* Tier config */}
       {tab === 'tiers' && (
-        <div className="bg-surface border border-border rounded-2xl p-6 space-y-4">
-          <h2 className="text-sm font-semibold text-text-primary flex items-center gap-2"><Sliders size={15} /> 티어 커트라인 설정</h2>
-          <p className="text-xs text-muted">변경 후 저장하면 다음 서버 재시작 시 적용됩니다 (현재는 DB에 저장됨)</p>
-          <div className="space-y-3">
-            {tierConfig.map((tier, i) => (
-              <div key={tier.name} className="flex items-center gap-3">
-                <span className="text-sm font-medium text-text-primary w-20"
-                  style={{ color: tier.color }}>
-                  {tier.name}
-                </span>
-                <div className="flex items-center gap-2 text-xs text-muted">
-                  <span>최소</span>
-                  <input type="number" min={0} value={tier.min}
-                    onChange={(e) => setTierConfig((p) => p.map((t, j) => j === i ? { ...t, min: Number(e.target.value) } : t))}
-                    className="w-24 bg-background border border-border rounded px-2 py-1 text-sm text-text-primary focus:outline-none focus:border-accent" />
-                  <span>pt ~</span>
-                  {i < tierConfig.length - 1 ? (
-                    <>
-                      <span>최대</span>
-                      <input type="number" min={0} value={tier.max === Infinity ? '' : tier.max}
-                        onChange={(e) => setTierConfig((p) => p.map((t, j) => j === i ? { ...t, max: e.target.value === '' ? Infinity : Number(e.target.value) } : t))}
-                        className="w-24 bg-background border border-border rounded px-2 py-1 text-sm text-text-primary focus:outline-none focus:border-accent" />
-                      <span>pt</span>
-                    </>
-                  ) : (
-                    <span>∞</span>
-                  )}
-                </div>
-              </div>
-            ))}
+        <div className="space-y-4">
+          {/* Like points */}
+          <div className="bg-surface border border-border rounded-2xl p-6 space-y-3">
+            <h2 className="text-sm font-semibold text-text-primary flex items-center gap-2"><Sliders size={15} /> 추천 포인트 설정</h2>
+            <div className="flex items-center gap-3">
+              <label className="text-sm text-text-secondary">추천 1회당 지급 포인트</label>
+              <input type="number" min={0} value={likePoints} onChange={(e) => setLikePoints(Number(e.target.value))}
+                className="w-24 bg-background border border-border rounded px-2 py-1 text-sm text-text-primary focus:outline-none focus:border-accent" />
+              <span className="text-sm text-muted">pt</span>
+            </div>
           </div>
+
+          {/* User tiers */}
+          <div className="bg-surface border border-border rounded-2xl p-6 space-y-4">
+            <h2 className="text-sm font-semibold text-text-primary flex items-center gap-2"><Sliders size={15} /> 유저 티어 커트라인</h2>
+            <div className="space-y-3">
+              {tierConfig.map((tier, i) => (
+                <div key={tier.name} className="flex items-center gap-3">
+                  <span className="text-sm font-medium w-20" style={{ color: tier.color }}>{tier.name}</span>
+                  <div className="flex items-center gap-2 text-xs text-muted">
+                    <span>최소</span>
+                    <input type="number" min={0} value={tier.min}
+                      onChange={(e) => setTierConfig((p) => p.map((t, j) => j === i ? { ...t, min: Number(e.target.value) } : t))}
+                      className="w-24 bg-background border border-border rounded px-2 py-1 text-sm text-text-primary focus:outline-none focus:border-accent" />
+                    <span>pt ~</span>
+                    {i < tierConfig.length - 1 ? (
+                      <>
+                        <span>최대</span>
+                        <input type="number" min={0} value={tier.max === Infinity ? '' : tier.max}
+                          onChange={(e) => setTierConfig((p) => p.map((t, j) => j === i ? { ...t, max: e.target.value === '' ? Infinity : Number(e.target.value) } : t))}
+                          className="w-24 bg-background border border-border rounded px-2 py-1 text-sm text-text-primary focus:outline-none focus:border-accent" />
+                        <span>pt</span>
+                      </>
+                    ) : <span>∞</span>}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* Problem tiers */}
+          <div className="bg-surface border border-border rounded-2xl p-6 space-y-4">
+            <h2 className="text-sm font-semibold text-text-primary flex items-center gap-2"><Sliders size={15} /> 문제 티어 커트라인 (승인 포인트 기준)</h2>
+            <div className="space-y-3">
+              {problemTierConfig.map((tier, i) => (
+                <div key={tier.name} className="flex items-center gap-3">
+                  <span className="text-sm font-medium w-20" style={{ color: tier.color }}>{tier.name}</span>
+                  <div className="flex items-center gap-2 text-xs text-muted">
+                    <span>최소</span>
+                    <input type="number" min={0} value={tier.min}
+                      onChange={(e) => setProblemTierConfig((p) => p.map((t, j) => j === i ? { ...t, min: Number(e.target.value) } : t))}
+                      className="w-24 bg-background border border-border rounded px-2 py-1 text-sm text-text-primary focus:outline-none focus:border-accent" />
+                    <span>pt ~</span>
+                    {i < problemTierConfig.length - 1 ? (
+                      <>
+                        <span>최대</span>
+                        <input type="number" min={0} value={tier.max === Infinity ? '' : tier.max}
+                          onChange={(e) => setProblemTierConfig((p) => p.map((t, j) => j === i ? { ...t, max: e.target.value === '' ? Infinity : Number(e.target.value) } : t))}
+                          className="w-24 bg-background border border-border rounded px-2 py-1 text-sm text-text-primary focus:outline-none focus:border-accent" />
+                        <span>pt</span>
+                      </>
+                    ) : <span>∞</span>}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+
           <button onClick={saveTiers} disabled={tierSaving}
             className="px-4 py-2 rounded-lg bg-accent text-background text-sm font-semibold hover:bg-accent-dim transition-colors disabled:opacity-50">
             {tierSaving ? '저장 중...' : '저장'}
@@ -562,7 +712,7 @@ export default function AdminPage() {
                 <th className="text-left px-4 py-3 text-xs font-semibold text-text-secondary">제목</th>
                 <th className="text-left px-4 py-3 text-xs font-semibold text-text-secondary hidden md:table-cell">작성자</th>
                 <th className="text-left px-4 py-3 text-xs font-semibold text-text-secondary hidden md:table-cell">작성일</th>
-                <th className="text-right px-4 py-3 text-xs font-semibold text-text-secondary">삭제</th>
+                <th className="text-right px-4 py-3 text-xs font-semibold text-text-secondary">액션</th>
               </tr></thead>
               <tbody>
                 {posts.map((p) => (
@@ -571,7 +721,10 @@ export default function AdminPage() {
                     <td className="px-4 py-3 text-text-secondary hidden md:table-cell">{p.author?.name ?? '?'}</td>
                     <td className="px-4 py-3 text-muted text-xs hidden md:table-cell">{timeAgo(p.createdAt)}</td>
                     <td className="px-4 py-3">
-                      <div className="flex justify-end">
+                      <div className="flex justify-end gap-1">
+                        <Link href={`/post/${p.id}/edit`} className="p-1.5 rounded-lg text-muted hover:text-accent hover:bg-accent/10 transition-colors">
+                          <Pencil size={14} />
+                        </Link>
                         <button onClick={() => confirmDeletePost(p)} className="p-1.5 rounded-lg text-muted hover:text-red-400 hover:bg-red-400/10 transition-colors">
                           <Trash2 size={14} />
                         </button>
@@ -639,6 +792,7 @@ export default function AdminPage() {
                       <div>
                         <div className="flex items-center gap-1.5">
                           <span className="font-medium text-text-primary">{user.name ?? '?'}</span>
+                          {user.role === 'OWNER' && <span className="text-xs px-1.5 py-0.5 rounded bg-yellow-500/15 text-yellow-600 border border-yellow-500/30 font-semibold">OWNER</span>}
                           {user.role === 'ADMIN' && <span className="text-xs px-1.5 py-0.5 rounded bg-accent/10 text-accent border border-accent/20">관리자</span>}
                         </div>
                       </div>
@@ -670,10 +824,12 @@ export default function AdminPage() {
                           className="p-1.5 rounded-lg text-muted hover:text-accent hover:bg-accent/10 transition-colors">
                           <Pencil size={13} />
                         </button>
-                        <button onClick={() => toggleAdmin(user)} title={user.role === 'ADMIN' ? '관리자 해제' : '관리자 설정'}
-                          className="p-1.5 rounded-lg text-muted hover:text-accent hover:bg-accent/10 transition-colors">
-                          {user.role === 'ADMIN' ? <ShieldOff size={14} /> : <Shield size={14} />}
-                        </button>
+                        {session.user.isOwner && (
+                          <button onClick={() => toggleAdmin(user)} title={user.role === 'ADMIN' ? '관리자 해제' : '관리자 설정'}
+                            className="p-1.5 rounded-lg text-muted hover:text-accent hover:bg-accent/10 transition-colors">
+                            {user.role === 'ADMIN' ? <ShieldOff size={14} /> : <Shield size={14} />}
+                          </button>
+                        )}
                         <button onClick={() => confirmDeleteUser(user)}
                           className="p-1.5 rounded-lg text-muted hover:text-red-400 hover:bg-red-400/10 transition-colors">
                           <Trash2 size={14} />

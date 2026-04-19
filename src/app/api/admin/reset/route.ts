@@ -8,6 +8,11 @@ export async function POST(req: NextRequest) {
   if (!session?.user || session.user.role !== 'ADMIN') {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
+  // 초기화는 최고 관리자(OWNER)만 가능
+  const dbUser = await prisma.user.findUnique({ where: { id: session.user.id }, select: { role: true } })
+  if (dbUser?.role !== 'OWNER') {
+    return NextResponse.json({ error: '최고 관리자만 초기화할 수 있습니다' }, { status: 403 })
+  }
 
   const { adminPassword, scope } = await req.json()
   // scope: 'points' | 'all'

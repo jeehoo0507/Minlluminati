@@ -1,9 +1,23 @@
 import { prisma } from './db'
 
 export const POINTS = {
-  POST_CREATE: 10,
-  LIKE_RECEIVED: 2,
+  POST_CREATE: 0,
+  LIKE_RECEIVED: 5,
 } as const
+
+export const PROBLEM_TIERS = [
+  { name: '브론즈', min: 1,   max: 9,         color: '#92400e', bg: '#fef3c7' },
+  { name: '실버',   min: 10,  max: 24,         color: '#374151', bg: '#f3f4f6' },
+  { name: '골드',   min: 25,  max: 49,         color: '#b45309', bg: '#fffbeb' },
+  { name: '플래티넘', min: 50, max: 99,        color: '#0f766e', bg: '#f0fdfa' },
+  { name: '다이아', min: 100, max: 199,        color: '#1d4ed8', bg: '#eff6ff' },
+  { name: '루비',   min: 200, max: Infinity,   color: '#be123c', bg: '#fff1f2' },
+] as const
+
+export function getProblemTier(pts: number | null | undefined) {
+  if (!pts || pts <= 0) return null
+  return [...PROBLEM_TIERS].reverse().find((t) => pts >= t.min) ?? null
+}
 
 export const TIERS = [
   { name: '새싹',    min: 0,    max: 29,         color: '#16a34a', bg: '#f0fdf4' },
@@ -27,19 +41,21 @@ export async function awardPostPoints(userId: string, postId: string, subject?: 
   ])
 }
 
-export async function awardLikePoints(postAuthorId: string, postId: string, subject?: string) {
+export async function awardLikePoints(postAuthorId: string, postId: string, subject?: string | null, amount: number = POINTS.LIKE_RECEIVED) {
+  if (amount <= 0) return
   await prisma.$transaction([
-    prisma.user.update({ where: { id: postAuthorId }, data: { points: { increment: POINTS.LIKE_RECEIVED } } }),
-    prisma.post.update({ where: { id: postId }, data: { pointsAwarded: { increment: POINTS.LIKE_RECEIVED } } }),
-    prisma.pointHistory.create({ data: { userId: postAuthorId, delta: POINTS.LIKE_RECEIVED, reason: '추천 받음', subject } }),
+    prisma.user.update({ where: { id: postAuthorId }, data: { points: { increment: amount } } }),
+    prisma.post.update({ where: { id: postId }, data: { pointsAwarded: { increment: amount } } }),
+    prisma.pointHistory.create({ data: { userId: postAuthorId, delta: amount, reason: '추천 받음', subject: subject ?? undefined } }),
   ])
 }
 
-export async function revokeLikePoints(postAuthorId: string, postId: string, subject?: string) {
+export async function revokeLikePoints(postAuthorId: string, postId: string, subject?: string | null, amount: number = POINTS.LIKE_RECEIVED) {
+  if (amount <= 0) return
   await prisma.$transaction([
-    prisma.user.update({ where: { id: postAuthorId }, data: { points: { decrement: POINTS.LIKE_RECEIVED } } }),
-    prisma.post.update({ where: { id: postId }, data: { pointsAwarded: { decrement: POINTS.LIKE_RECEIVED } } }),
-    prisma.pointHistory.create({ data: { userId: postAuthorId, delta: -POINTS.LIKE_RECEIVED, reason: '추천 취소', subject } }),
+    prisma.user.update({ where: { id: postAuthorId }, data: { points: { decrement: amount } } }),
+    prisma.post.update({ where: { id: postId }, data: { pointsAwarded: { decrement: amount } } }),
+    prisma.pointHistory.create({ data: { userId: postAuthorId, delta: -amount, reason: '추천 취소', subject: subject ?? undefined } }),
   ])
 }
 

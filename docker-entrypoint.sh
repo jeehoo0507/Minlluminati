@@ -3,10 +3,9 @@ set -e
 
 # 1. 데이터베이스 마이그레이션 실행
 echo "🔧 Running database migrations..."
-# npx를 사용하는 것이 인자(flag) 전달에 훨씬 안정적입니다.
 node node_modules/prisma/build/index.js db push --accept-data-loss
 
-# 2. 데이터베이스 시딩 (Admin 계정 생성)
+# 2. 데이터베이스 시딩 (Admin 계정 생성/승격)
 echo "🌱 Seeding database..."
 node -e "
 const { PrismaClient } = require('@prisma/client')
@@ -19,18 +18,24 @@ async function seed() {
     const existing = await prisma.user.findUnique({ where: { email } })
     if (!existing) {
       const hashed = await bcrypt.hash(pw, 12)
-      await prisma.user.create({ 
-        data: { 
-          email, 
-          name: '관리자', 
-          password: hashed, 
-          passwordSet: true, 
-          role: 'ADMIN' 
-        } 
+      await prisma.user.create({
+        data: {
+          email,
+          name: '관리자',
+          password: hashed,
+          passwordSet: true,
+          role: 'OWNER'
+        }
       })
-      console.log('✅ Admin created:', email)
+      console.log('✅ Owner created:', email)
     } else {
-      console.log('ℹ️ Admin already exists.')
+      // 기존 계정을 OWNER로 승격
+      if (existing.role !== 'OWNER') {
+        await prisma.user.update({ where: { email }, data: { role: 'OWNER' } })
+        console.log('✅ Promoted to OWNER:', email)
+      } else {
+        console.log('ℹ️ Owner already exists:', email)
+      }
     }
   } catch (error) {
     console.error('❌ Seeding error:', error)

@@ -1,14 +1,21 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/db'
 import { getAuth } from '@/lib/auth'
-import { TIERS } from '@/lib/scoring'
+import { TIERS, PROBLEM_TIERS, POINTS } from '@/lib/scoring'
 
 export const dynamic = 'force-dynamic'
 
 export async function GET() {
-  const cfg = await prisma.systemConfig.findUnique({ where: { key: 'tiers' } })
-  if (cfg) return NextResponse.json(JSON.parse(cfg.value))
-  return NextResponse.json(TIERS)
+  const [userTiersCfg, problemTiersCfg, pointsCfg] = await Promise.all([
+    prisma.systemConfig.findUnique({ where: { key: 'tiers' } }),
+    prisma.systemConfig.findUnique({ where: { key: 'problemTiers' } }),
+    prisma.systemConfig.findUnique({ where: { key: 'points' } }),
+  ])
+  return NextResponse.json({
+    tiers: userTiersCfg ? JSON.parse(userTiersCfg.value) : TIERS,
+    problemTiers: problemTiersCfg ? JSON.parse(problemTiersCfg.value) : PROBLEM_TIERS,
+    points: pointsCfg ? JSON.parse(pointsCfg.value) : { likeReceived: POINTS.LIKE_RECEIVED },
+  })
 }
 
 export async function PATCH(req: NextRequest) {
@@ -17,13 +24,29 @@ export async function PATCH(req: NextRequest) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
 
-  const { tiers } = await req.json()
-  if (!Array.isArray(tiers)) return NextResponse.json({ error: 'Invalid' }, { status: 400 })
+  const body = await req.json()
 
-  await prisma.systemConfig.upsert({
-    where: { key: 'tiers' },
-    create: { key: 'tiers', value: JSON.stringify(tiers) },
-    update: { value: JSON.stringify(tiers) },
-  })
+  if (body.tiers) {
+    await prisma.systemConfig.upsert({
+      where: { key: 'tiers' },
+      create: { key: 'tiers', value: JSON.stringify(body.tiers) },
+      update: { value: JSON.stringify(body.tiers) },
+    })
+  }
+  if (body.problemTiers) {
+    await prisma.systemConfig.upsert({
+      where: { key: 'problemTiers' },
+      create: { key: 'problemTiers', value: JSON.stringify(body.problemTiers) },
+      update: { value: JSON.stringify(body.problemTiers) },
+    })
+  }
+  if (body.points) {
+    await prisma.systemConfig.upsert({
+      where: { key: 'points' },
+      create: { key: 'points', value: JSON.stringify(body.points) },
+      update: { value: JSON.stringify(body.points) },
+    })
+  }
+
   return NextResponse.json({ ok: true })
 }

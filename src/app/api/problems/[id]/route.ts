@@ -8,13 +8,23 @@ export async function GET(req: NextRequest, { params }: { params: { id: string }
   const session = await getAuth()
   const userId = session?.user?.id
 
-  const problem = await prisma.problem.findUnique({
-    where: { id: params.id },
-    include: {
-      author: { select: { id: true, name: true, image: true, points: true, role: true } },
-      _count: { select: { submissions: true, solutions: true } },
-    },
-  })
+  // Support lookup by problemNumber (numeric string) OR by id
+  const isNumber = /^\d+$/.test(params.id)
+  const problem = isNumber
+    ? await prisma.problem.findFirst({
+        where: { problemNumber: parseInt(params.id) },
+        include: {
+          author: { select: { id: true, name: true, image: true, points: true, role: true } },
+          _count: { select: { submissions: true, solutions: true } },
+        },
+      })
+    : await prisma.problem.findUnique({
+        where: { id: params.id },
+        include: {
+          author: { select: { id: true, name: true, image: true, points: true, role: true } },
+          _count: { select: { submissions: true, solutions: true } },
+        },
+      })
 
   if (!problem) return NextResponse.json({ error: 'Not found' }, { status: 404 })
 
@@ -52,15 +62,35 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
   const problem = await prisma.problem.findUnique({ where: { id: params.id } })
   if (!problem) return NextResponse.json({ error: 'Not found' }, { status: 404 })
 
-  const { status, approvedPts } = await req.json()
+  const { status, approvedPts, title, content, answer, subject } = await req.json()
 
   const updated = await prisma.problem.update({
     where: { id: params.id },
     data: {
       ...(status ? { status } : {}),
       ...(approvedPts !== undefined ? { approvedPts } : {}),
+      ...(title !== undefined ? { title } : {}),
+      ...(content !== undefined ? { content } : {}),
+      ...(answer !== undefined ? { answer } : {}),
+      ...(subject !== undefined ? { subject } : {}),
     },
   })
+
+  // Notify author on status change
+  if (status && status !== problem.status && problem.authorId !== session.user.id) {
+    const notifMsg = status === 'APPROVED'
+      ? `문제 "${problem.title}"이(가) 승인되었습니다.${approvedPts ? ` (${approvedPts}pt)` : ''}`
+      : `문제 "${problem.title}"이(가) 반려되었습니다.`
+    await prisma.notification.create({
+      data: {
+        userId: problem.authorId,
+        type: 'PROBLEM_APPROVED',
+        title: status === 'APPROVED' ? '문제 승인됨' : '문제 반려됨',
+        content: notifMsg,
+        link: `/problems/${problem.id}`,
+      },
+    })
+  }
 
   return NextResponse.json(updated)
 }
@@ -72,12 +102,8 @@ export async function DELETE(_: NextRequest, { params }: { params: { id: string 
   const problem = await prisma.problem.findUnique({ where: { id: params.id } })
   if (!problem) return NextResponse.json({ error: 'Not found' }, { status: 404 })
 
-  const isAuthor = problem.authorId === session.user.id
-  const isAdmin = session.user.role === 'ADMIN'
-
-  // Author can delete only if PENDING; admin can always delete
-  if (!isAdmin && !(isAuthor && problem.status === 'PENDING')) {
-    return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+  if (!session.user.isOwner) {
+    return NextResponse.json({ error: '최고 관리자만 삭제할 수 있습니다' }, { status: 403 })
   }
 
   await prisma.problem.delete({ where: { id: params.id } })

@@ -41,6 +41,7 @@ export async function GET(_: NextRequest, { params }: { params: { id: string } }
     include: {
       organizer: { select: { id: true, name: true, image: true, points: true } },
       problems: { orderBy: { order: 'asc' } },
+      contributors: { include: { user: { select: { id: true, name: true } } } },
       _count: { select: { participants: true } },
     },
   })
@@ -48,14 +49,18 @@ export async function GET(_: NextRequest, { params }: { params: { id: string } }
 
   const isOrganizer = session?.user?.id === contest.organizerId
   const isAdmin = session?.user?.role === 'ADMIN'
+  const isContributor = session?.user
+    ? contest.contributors.some((c) => c.userId === session!.user!.id)
+    : false
 
-  // DRAFT/PENDING: organizer/admin only
-  if (['DRAFT', 'PENDING'].includes(contest.status) && !isOrganizer && !isAdmin) {
+  // DRAFT/PENDING: organizer/admin/contributor only
+  if (['DRAFT', 'PENDING'].includes(contest.status) && !isOrganizer && !isAdmin && !isContributor) {
     return NextResponse.json({ error: 'Not found' }, { status: 404 })
   }
 
-  // Hide answers from non-organizers
-  const problems = (isOrganizer || isAdmin)
+  // Hide answers from non-organizers (contributors can see answers for review)
+  const canSeeAnswers = isOrganizer || isAdmin || isContributor
+  const problems = canSeeAnswers
     ? contest.problems
     : contest.problems.map(({ answer: _a, ...p }) => p)
 

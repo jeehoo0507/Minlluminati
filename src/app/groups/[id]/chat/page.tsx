@@ -5,13 +5,14 @@ import { useSession } from 'next-auth/react'
 import Link from 'next/link'
 import { Avatar } from '@/components/ui/Avatar'
 import { TierBadge } from '@/components/ui/TierBadge'
-import { ArrowLeft, Send, ImageIcon } from 'lucide-react'
+import { ArrowLeft, Send, ImageIcon, Trash2 } from 'lucide-react'
 import toast from 'react-hot-toast'
 
 interface Message {
   id: string
   content: string
   imageUrl?: string | null
+  deletedAt?: string | null
   createdAt: string
   author: { id: string; name?: string | null; image?: string | null; points: number }
 }
@@ -119,6 +120,13 @@ export default function GroupChatPage() {
     if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSend() }
   }
 
+  async function deleteMessage(msgId: string) {
+    const res = await fetch(`/api/groups/${id}/messages/${msgId}`, { method: 'DELETE' })
+    if (res.ok) {
+      setMessages((prev) => prev.map((m) => m.id === msgId ? { ...m, deletedAt: new Date().toISOString(), content: '' } : m))
+    } else toast.error('삭제 실패')
+  }
+
   function formatTime(iso: string) {
     return new Date(iso).toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' })
   }
@@ -153,8 +161,10 @@ export default function GroupChatPage() {
         )}
         {messages.map((m) => {
           const isMe = m.author.id === session?.user?.id
+          const isAdmin = session?.user?.role === 'ADMIN'
+          const deleted = !!m.deletedAt
           return (
-            <div key={m.id} className={`flex gap-2 ${isMe ? 'flex-row-reverse' : ''}`}>
+            <div key={m.id} className={`flex gap-2 group ${isMe ? 'flex-row-reverse' : ''}`}>
               <Avatar name={m.author.name} image={m.author.image} size={28} />
               <div className={`max-w-[70%] ${isMe ? 'items-end' : 'items-start'} flex flex-col gap-0.5`}>
                 {!isMe && (
@@ -163,16 +173,32 @@ export default function GroupChatPage() {
                     <TierBadge points={m.author.points} />
                   </div>
                 )}
-                {m.imageUrl && (
-                  // eslint-disable-next-line @next/next/no-img-element
-                  <img src={m.imageUrl} alt="image" className="max-w-full rounded-xl max-h-64 object-contain border border-border" />
-                )}
-                {m.content && (
-                  <div className={`px-3 py-2 rounded-2xl text-sm break-words ${isMe ? 'bg-accent text-white rounded-tr-sm' : 'bg-surface-2 text-text-primary rounded-tl-sm'}`}>
-                    {renderContent(m.content)}
+                {deleted ? (
+                  <div className="px-3 py-2 rounded-2xl text-sm text-muted italic bg-surface-2 border border-border border-dashed">
+                    삭제된 메시지입니다
                   </div>
+                ) : (
+                  <>
+                    {m.imageUrl && (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img src={m.imageUrl} alt="image" className="max-w-full rounded-xl max-h-64 object-contain border border-border" />
+                    )}
+                    {m.content && (
+                      <div className={`px-3 py-2 rounded-2xl text-sm break-words ${isMe ? 'bg-accent text-white rounded-tr-sm' : 'bg-surface-2 text-text-primary rounded-tl-sm'}`}>
+                        {renderContent(m.content)}
+                      </div>
+                    )}
+                  </>
                 )}
-                <span className="text-xs text-muted">{formatTime(m.createdAt)}</span>
+                <div className="flex items-center gap-1.5">
+                  <span className="text-xs text-muted">{formatTime(m.createdAt)}</span>
+                  {!deleted && (isMe || isAdmin) && (
+                    <button onClick={() => deleteMessage(m.id)}
+                      className="opacity-0 group-hover:opacity-100 transition-opacity text-muted hover:text-red-400">
+                      <Trash2 size={11} />
+                    </button>
+                  )}
+                </div>
               </div>
             </div>
           )

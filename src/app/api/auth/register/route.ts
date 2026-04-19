@@ -23,6 +23,11 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: '이미 가입된 이메일입니다' }, { status: 409 })
   }
 
+  const nameConflict = await prisma.user.findFirst({ where: { name } })
+  if (nameConflict) {
+    return NextResponse.json({ error: '이미 사용 중인 닉네임입니다' }, { status: 409 })
+  }
+
   const hashed = await bcrypt.hash(password, 12)
   await prisma.user.create({
     data: { email, name, password: hashed, passwordSet: true, role: 'USER' },

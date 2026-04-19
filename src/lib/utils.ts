@@ -14,18 +14,22 @@ export function timeAgo(date: Date | string) {
 export const SUBJECTS = {
   MATH1:     { label: '공통수학 1', short: '수1', category: 'math' },
   MATH2:     { label: '공통수학 2', short: '수2', category: 'math' },
+  MATH:      { label: '수학', short: '수학', category: 'math' },
   FREE:      { label: '자유 문제', short: '자유', category: 'free' },
   PROOF:     { label: '증명', short: '증명', category: 'free' },
   TIPS:      { label: '날먹 기술', short: '날먹', category: 'free' },
   PHYSICS:   { label: '물리', short: '물리', category: 'science' },
   CHEMISTRY: { label: '화학', short: '화학', category: 'science' },
-  CS:        { label: '정보/코딩', short: '정보', category: 'science' },
-  EARTH:     { label: '지구과학', short: '지구', category: 'science' },
+  CS:        { label: '정보', short: '정보', category: 'science' },
+  EARTH:     { label: '지구', short: '지구', category: 'science' },
+  BIOLOGY:   { label: '생명', short: '생명', category: 'science' },
   QUESTION:  { label: '질문', short: '질문', category: 'community' },
   BOARD:     { label: '자유게시판', short: '자유판', category: 'community' },
 } as const
 
 export type SubjectKey = keyof typeof SUBJECTS
+
+export const PROBLEM_SUBJECTS: SubjectKey[] = ['MATH1', 'MATH2', 'MATH', 'PHYSICS', 'CHEMISTRY', 'CS', 'EARTH']
 
 export const UNITS: Record<string, string[]> = {
   MATH1: [

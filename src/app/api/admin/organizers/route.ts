@@ -15,12 +15,15 @@ export async function GET() {
 
 export async function POST(req: NextRequest) {
   await requireAdmin()
-  const { userId } = await req.json()
-  if (!userId) return NextResponse.json({ error: '유저 ID 필요' }, { status: 400 })
+  const { email } = await req.json()
+  if (!email) return NextResponse.json({ error: '이메일을 입력해주세요' }, { status: 400 })
+
+  const user = await prisma.user.findUnique({ where: { email } })
+  if (!user) return NextResponse.json({ error: '해당 이메일의 유저를 찾을 수 없습니다' }, { status: 404 })
 
   const organizer = await prisma.contestOrganizer.upsert({
-    where: { userId },
-    create: { userId },
+    where: { userId: user.id },
+    create: { userId: user.id },
     update: {},
     include: { user: { select: { id: true, name: true, email: true } } },
   })

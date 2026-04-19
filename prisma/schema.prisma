@@ -54,6 +54,10 @@ model User {
   problemSets      ProblemSet[]        @relation("UserProblemSets")
   contestContributions ContestContributor[] @relation("ContestContributors")
 
+  // Chat & Notifications
+  contestChats  ContestChat[]
+  notifications Notification[]
+
   @@map("users")
 }
 
@@ -132,6 +136,7 @@ model Contest {
   problems      ContestProblem[]
   participants  ContestParticipant[]
   contributors  ContestContributor[]
+  chats         ContestChat[]
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
 
@@ -139,19 +144,33 @@ model Contest {
 }
 
 model ContestProblem {
-  id        String  @id @default(cuid())
-  contestId String
-  contest   Contest @relation(fields: [contestId], references: [id], onDelete: Cascade)
-  label     String  // A, B, C ...
-  title     String
-  content   String
-  answer    String
-  points    Int     @default(100)
-  imageUrls String  @default("[]")
-  order     Int     @default(0)
-  submissions ContestSubmission[]
+  id           String  @id @default(cuid())
+  contestId    String
+  contest      Contest @relation(fields: [contestId], references: [id], onDelete: Cascade)
+  label        String  // A, B, C ...
+  title        String
+  content      String
+  answer       String
+  extraAnswers String  @default("[]") // JSON array of additional correct answers
+  points       Int     @default(100)
+  imageUrls    String  @default("[]")
+  order        Int     @default(0)
+  allowRetry   Boolean @default(true)
+  submissions  ContestSubmission[]
 
   @@map("contest_problems")
+}
+
+model ContestChat {
+  id        String   @id @default(cuid())
+  contestId String
+  authorId  String
+  content   String
+  contest   Contest  @relation(fields: [contestId], references: [id], onDelete: Cascade)
+  author    User     @relation(fields: [authorId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+
+  @@map("contest_chats")
 }
 
 model ContestParticipant {
@@ -239,14 +258,15 @@ model GroupPost {
 }
 
 model GroupMessage {
-  id        String   @id @default(cuid())
+  id        String    @id @default(cuid())
   groupId   String
   authorId  String
   content   String
   imageUrl  String?
-  group     Group    @relation(fields: [groupId], references: [id], onDelete: Cascade)
-  author    User     @relation(fields: [authorId], references: [id], onDelete: Cascade)
-  createdAt DateTime @default(now())
+  deletedAt DateTime?
+  group     Group     @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  author    User      @relation(fields: [authorId], references: [id], onDelete: Cascade)
+  createdAt DateTime  @default(now())
 
   @@map("group_messages")
 }
@@ -370,6 +390,20 @@ model ContestContributor {
 
   @@unique([contestId, userId])
   @@map("contest_contributors")
+}
+
+model Notification {
+  id        String   @id @default(cuid())
+  userId    String
+  type      String   // ADMIN_NOTICE | RIVAL_SOLVED | PROBLEM_APPROVED
+  title     String
+  content   String
+  link      String?
+  read      Boolean  @default(false)
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+
+  @@map("notifications")
 }
 
 model SystemConfig {

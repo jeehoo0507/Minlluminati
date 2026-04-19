@@ -44,6 +44,13 @@ export async function PATCH(req: NextRequest) {
     return NextResponse.json({ error: '닉네임을 입력해주세요' }, { status: 400 })
   }
 
+  if (name !== undefined) {
+    const conflict = await prisma.user.findFirst({
+      where: { name: name.trim(), NOT: { id: session.user.id } },
+    })
+    if (conflict) return NextResponse.json({ error: '이미 사용 중인 닉네임입니다' }, { status: 409 })
+  }
+
   const updated = await prisma.user.update({
     where: { id: session.user.id },
     data: {

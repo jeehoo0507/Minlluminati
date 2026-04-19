@@ -9,7 +9,7 @@ const SUBJECT_GROUPS = [
   {
     label: '수학',
     icon: BookOpen,
-    subjects: ['MATH1', 'MATH2'] as SubjectKey[],
+    subjects: ['MATH1', 'MATH2', 'MATH'] as SubjectKey[],
   },
   {
     label: '자유/기타',
@@ -19,7 +19,7 @@ const SUBJECT_GROUPS = [
   {
     label: '과학/정보',
     icon: FolderOpen,
-    subjects: ['PHYSICS', 'CHEMISTRY', 'CS', 'EARTH'] as SubjectKey[],
+    subjects: ['PHYSICS', 'CHEMISTRY', 'CS', 'EARTH', 'BIOLOGY'] as SubjectKey[],
   },
   {
     label: '커뮤니티',

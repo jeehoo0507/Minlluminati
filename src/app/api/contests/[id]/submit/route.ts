@@ -31,13 +31,21 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
   const problem = await prisma.contestProblem.findUnique({ where: { id: problemId } })
   if (!problem || problem.contestId !== params.id) return NextResponse.json({ error: 'Not found' }, { status: 404 })
 
-  // Check if already correctly solved
+  // Check if already correctly solved or retry not allowed
   const existing = await prisma.contestSubmission.findUnique({
     where: { problemId_userId: { problemId, userId: session.user.id } },
   })
   if (existing?.correct) return NextResponse.json({ correct: true, alreadySolved: true })
+  if (!problem.allowRetry && existing) {
+    return NextResponse.json({ error: '이 문제는 재시도가 불가능합니다', noRetry: true }, { status: 400 })
+  }
 
-  const correct = answer.trim().toLowerCase() === problem.answer.trim().toLowerCase()
+  const normalizedAnswer = answer.trim().toLowerCase().replace(/\s/g, '')
+  const correctAnswer = problem.answer.trim().toLowerCase().replace(/\s/g, '')
+  let extraAnswers: string[] = []
+  try { extraAnswers = JSON.parse(problem.extraAnswers) } catch {}
+  const allAnswers = [correctAnswer, ...extraAnswers.map((a) => a.trim().toLowerCase().replace(/\s/g, ''))]
+  const correct = allAnswers.some((a) => a === normalizedAnswer)
 
   await prisma.contestSubmission.upsert({
     where: { problemId_userId: { problemId, userId: session.user.id } },

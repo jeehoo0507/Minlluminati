@@ -5,8 +5,8 @@ import bcrypt from 'bcryptjs'
 
 export async function DELETE(req: NextRequest, { params }: { params: { id: string } }) {
   const session = await getAuth()
-  if (!session?.user || session.user.role !== 'ADMIN') {
-    return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+  if (!session?.user || !session.user.isOwner) {
+    return NextResponse.json({ error: '최고 관리자만 삭제할 수 있습니다' }, { status: 403 })
   }
 
   const { adminPassword } = await req.json()

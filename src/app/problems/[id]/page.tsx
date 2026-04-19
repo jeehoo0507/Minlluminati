@@ -8,8 +8,9 @@ import rehypeKatex from 'rehype-katex'
 import remarkGfm from 'remark-gfm'
 import { Avatar } from '@/components/ui/Avatar'
 import { TierBadge } from '@/components/ui/TierBadge'
+import { ProblemTierBadge } from '@/components/ui/ProblemTierBadge'
 import { SUBJECTS, timeAgo, parseJsonSafe, type SubjectKey, cn } from '@/lib/utils'
-import { ArrowLeft, CheckCircle2, XCircle, Users, MessageSquare, Send, Trash2, ImagePlus, X, Star } from 'lucide-react'
+import { ArrowLeft, CheckCircle2, XCircle, Users, MessageSquare, Send, Trash2, ImagePlus, X, Star, Pencil } from 'lucide-react'
 import Link from 'next/link'
 import toast from 'react-hot-toast'
 
@@ -316,7 +317,8 @@ export default function ProblemDetailPage() {
               )}
               <span className={cn('text-xs px-2 py-0.5 rounded border', status.cls)}>{status.label}</span>
               {problem.approvedPts != null && problem.approvedPts > 0 && (
-                <span className="flex items-center gap-0.5 text-xs font-semibold text-accent">
+                <span className="flex items-center gap-1 text-xs font-semibold text-accent">
+                  <ProblemTierBadge pts={problem.approvedPts} size="md" />
                   <Star size={11} className="fill-current" />
                   {problem.approvedPts}pt
                 </span>
@@ -330,15 +332,26 @@ export default function ProblemDetailPage() {
             </div>
             <h1 className="text-xl font-bold text-text-primary">{problem.title}</h1>
           </div>
-          {canDelete && (
-            <button
-              onClick={handleDelete}
-              className="shrink-0 flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs text-muted hover:text-red-400 hover:bg-red-400/5 border border-transparent hover:border-red-400/20 transition-all"
-            >
-              <Trash2 size={13} />
-              삭제
-            </button>
-          )}
+          <div className="shrink-0 flex items-center gap-1">
+            {isAdmin && (
+              <Link
+                href={`/problems/${id}/edit`}
+                className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs text-muted hover:text-accent hover:bg-accent/5 border border-transparent hover:border-accent/20 transition-all"
+              >
+                <Pencil size={13} />
+                수정
+              </Link>
+            )}
+            {canDelete && (
+              <button
+                onClick={handleDelete}
+                className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs text-muted hover:text-red-400 hover:bg-red-400/5 border border-transparent hover:border-red-400/20 transition-all"
+              >
+                <Trash2 size={13} />
+                삭제
+              </button>
+            )}
+          </div>
         </div>
 
         {/* Author */}

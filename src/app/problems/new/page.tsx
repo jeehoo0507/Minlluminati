@@ -3,7 +3,7 @@ import { useState, useRef } from 'react'
 import { useSession } from 'next-auth/react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
-import { SUBJECTS, type SubjectKey } from '@/lib/utils'
+import { SUBJECTS, PROBLEM_SUBJECTS, type SubjectKey } from '@/lib/utils'
 import { ArrowLeft, ImagePlus, X, Info } from 'lucide-react'
 import toast from 'react-hot-toast'
 
@@ -121,7 +121,7 @@ export default function NewProblemPage() {
             className="w-full bg-background border border-border rounded-lg px-3 py-2 text-sm text-text-primary focus:outline-none focus:border-accent"
           >
             <option value="">과목 선택 (선택사항)</option>
-            {(Object.keys(SUBJECTS) as SubjectKey[]).map((key) => (
+            {PROBLEM_SUBJECTS.map((key) => (
               <option key={key} value={key}>{SUBJECTS[key].label}</option>
             ))}
           </select>

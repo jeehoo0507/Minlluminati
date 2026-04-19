@@ -3,7 +3,6 @@ import { prisma } from '@/lib/db'
 
 export const dynamic = 'force-dynamic'
 import { getAuth } from '@/lib/auth'
-import { awardPostPoints } from '@/lib/scoring'
 
 export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url)
@@ -71,8 +70,6 @@ export async function POST(req: NextRequest) {
       authorId: session.user.id,
     },
   })
-
-  await awardPostPoints(session.user.id, post.id, subject)
 
   return NextResponse.json(post, { status: 201 })
 }

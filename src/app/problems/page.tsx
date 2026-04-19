@@ -4,7 +4,8 @@ import { useSession } from 'next-auth/react'
 import Link from 'next/link'
 import { Avatar } from '@/components/ui/Avatar'
 import { TierBadge } from '@/components/ui/TierBadge'
-import { SUBJECTS, timeAgo, type SubjectKey } from '@/lib/utils'
+import { ProblemTierBadge } from '@/components/ui/ProblemTierBadge'
+import { SUBJECTS, PROBLEM_SUBJECTS, timeAgo, type SubjectKey } from '@/lib/utils'
 import { Search, PenLine, ListChecks, BookOpen, BarChart2, Menu, X, CheckCircle2, Clock } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
@@ -107,7 +108,7 @@ export default function ProblemsPage() {
         >
           전체
         </button>
-        {(Object.keys(SUBJECTS) as SubjectKey[]).map((key) => (
+        {PROBLEM_SUBJECTS.map((key) => (
           <button
             key={key}
             onClick={() => handleSubjectFilter(key)}
@@ -276,7 +277,10 @@ export default function ProblemsPage() {
                       <span className="text-xs text-muted">{p.solveRate}% 정답</span>
                     </div>
                     {p.approvedPts != null && p.approvedPts > 0 && (
-                      <div className="text-xs font-semibold text-accent">{p.approvedPts}pt</div>
+                      <div className="flex items-center gap-1 justify-end">
+                        <ProblemTierBadge pts={p.approvedPts} />
+                        <span className="text-xs font-semibold text-accent">{p.approvedPts}pt</span>
+                      </div>
                     )}
                     {p.status === 'PENDING' && p.requestedPts > 0 && (
                       <div className="flex items-center gap-1 justify-end">

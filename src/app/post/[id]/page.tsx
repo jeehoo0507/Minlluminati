@@ -117,7 +117,7 @@ export default function PostPage() {
             </div>
           </div>
           <div className="flex items-center gap-1">
-            {session?.user?.id === post.author.id && (
+            {(session?.user?.id === post.author.id || session?.user?.role === 'ADMIN') && (
               <Link href={`/post/${id}/edit`} className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs text-muted hover:text-accent hover:bg-accent/5 border border-transparent hover:border-accent/20 transition-all">
                 <Pencil size={13} /> 수정
               </Link>
@@ -168,30 +168,16 @@ export default function PostPage() {
             <span className="text-sm font-medium">{likeCount}</span>
             <span className="text-xs">{liked ? '추천 취소' : '추천 (+2pt)'}</span>
           </button>
-          <div className="flex items-center gap-2">
-            <button
-              onClick={() => {
-                navigator.clipboard.writeText(window.location.href)
-                toast.success('게시글 링크 복사됨')
-              }}
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-border text-xs text-muted hover:text-text-primary hover:border-border-2 transition-all"
-            >
-              <Copy size={12} />
-              링크 복사
-            </button>
-            {post.postNumber != null && (
-              <button
-                onClick={() => {
-                  navigator.clipboard.writeText(`#${post.postNumber}`)
-                  toast.success('게시글 번호 복사됨')
-                }}
-                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-border text-xs text-muted hover:text-text-primary hover:border-border-2 transition-all"
-              >
-                <Copy size={12} />
-                #{post.postNumber}
-              </button>
-            )}
-          </div>
+          <button
+            onClick={() => {
+              navigator.clipboard.writeText(window.location.href)
+              toast.success('링크 복사됨')
+            }}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-border text-xs text-muted hover:text-text-primary hover:border-border-2 transition-all"
+          >
+            <Copy size={12} />
+            링크 복사
+          </button>
         </div>
       </article>
 

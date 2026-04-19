@@ -1,7 +1,16 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/db'
 import { getAuth } from '@/lib/auth'
-import { awardLikePoints, revokeLikePoints } from '@/lib/scoring'
+import { awardLikePoints, revokeLikePoints, POINTS } from '@/lib/scoring'
+
+async function getLikePoints(): Promise<number> {
+  const cfg = await prisma.systemConfig.findUnique({ where: { key: 'points' } })
+  if (cfg) {
+    const p = JSON.parse(cfg.value)
+    return typeof p.likeReceived === 'number' ? p.likeReceived : POINTS.LIKE_RECEIVED
+  }
+  return POINTS.LIKE_RECEIVED
+}
 
 export async function POST(_: NextRequest, { params }: { params: { id: string } }) {
   const session = await getAuth()
@@ -17,19 +26,20 @@ export async function POST(_: NextRequest, { params }: { params: { id: string } 
     where: { userId_postId: { userId: session.user.id, postId: params.id } },
   })
 
+  const likePoints = await getLikePoints()
+
   if (existing) {
-    // 이미 추천했으면 취소
     await prisma.like.delete({
       where: { userId_postId: { userId: session.user.id, postId: params.id } },
     })
-    await revokeLikePoints(post.authorId, params.id, post.subject)
+    await revokeLikePoints(post.authorId, params.id, post.subject, likePoints)
     const count = await prisma.like.count({ where: { postId: params.id } })
     return NextResponse.json({ liked: false, count })
   } else {
     await prisma.like.create({
       data: { userId: session.user.id, postId: params.id },
     })
-    await awardLikePoints(post.authorId, params.id, post.subject)
+    await awardLikePoints(post.authorId, params.id, post.subject, likePoints)
     const count = await prisma.like.count({ where: { postId: params.id } })
     return NextResponse.json({ liked: true, count })
   }

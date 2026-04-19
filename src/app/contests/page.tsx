@@ -28,10 +28,8 @@ export default function ContestsPage() {
   useEffect(() => {
     fetch('/api/contests').then((r) => r.json()).then(setContests).finally(() => setLoading(false))
     if (session?.user) {
-      const isAdmin = session.user.role === 'ADMIN'
-      if (isAdmin) { setCanCreate(true); return }
-      fetch('/api/admin/organizers').then((r) => r.json()).then((data) => {
-        if (Array.isArray(data) && data.some((o: { userId: string }) => o.userId === session.user.id)) setCanCreate(true)
+      fetch('/api/me/organizer-status').then((r) => r.json()).then((d) => {
+        if (d.canCreate) setCanCreate(true)
       }).catch(() => {})
     }
   }, [session])

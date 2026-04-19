@@ -7,7 +7,7 @@ import type { Adapter } from 'next-auth/adapters'
 
 export const authOptions: NextAuthOptions = {
   adapter: PrismaAdapter(prisma) as Adapter,
-  session: { strategy: 'jwt' },
+  session: { strategy: 'jwt', maxAge: 30 * 24 * 60 * 60 },
   pages: { signIn: '/login', error: '/login' },
   providers: [
     CredentialsProvider({
@@ -45,8 +45,11 @@ export const authOptions: NextAuthOptions = {
     async session({ session, token }) {
       if (session.user) {
         session.user.id = token.id as string
-        session.user.role = token.role as string
         session.user.points = token.points as number
+        const dbRole = token.role as string
+        session.user.isOwner = dbRole === 'OWNER'
+        // OWNER는 모든 ADMIN 기능을 사용 가능 — role을 ADMIN으로 노출
+        session.user.role = dbRole === 'OWNER' ? 'ADMIN' : dbRole
       }
       return session
     },

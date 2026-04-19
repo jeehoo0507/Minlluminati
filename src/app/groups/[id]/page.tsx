@@ -6,7 +6,7 @@ import Link from 'next/link'
 import { Avatar } from '@/components/ui/Avatar'
 import { TierBadge } from '@/components/ui/TierBadge'
 import { timeAgo } from '@/lib/utils'
-import { MessageSquare, Trophy, FileText, Settings, UserMinus, UserPlus, Camera, Mail, X } from 'lucide-react'
+import { MessageSquare, Trophy, FileText, Settings, UserMinus, UserPlus, Camera, Mail, X, BookOpen } from 'lucide-react'
 import toast from 'react-hot-toast'
 
 interface Member { id: string; role: string; joinedAt: string; user: { id: string; name?: string | null; image?: string | null; points: number } }
@@ -197,17 +197,18 @@ export default function GroupPage() {
       </div>
 
       {/* Nav */}
-      <div className="grid grid-cols-3 gap-3">
+      <div className="grid grid-cols-4 gap-3">
         {[
           { href: `/groups/${id}/board`, icon: FileText, label: '게시판', count: group._count.posts },
           { href: `/groups/${id}/chat`, icon: MessageSquare, label: '채팅', count: group._count.messages },
+          { href: `/groups/${id}/sets`, icon: BookOpen, label: '문제집', count: null },
           { href: `/groups/${id}/ranking`, icon: Trophy, label: '랭킹', count: group.members.length },
         ].map(({ href, icon: Icon, label, count }) => (
           <Link key={href} href={href}
             className="flex flex-col items-center gap-1.5 p-4 bg-surface border border-border rounded-xl hover:border-border-2 hover:bg-surface-2 transition-all">
             <Icon size={20} className="text-accent" />
             <span className="text-sm font-medium text-text-primary">{label}</span>
-            <span className="text-xs text-muted">{count}</span>
+            {count !== null && <span className="text-xs text-muted">{count}</span>}
           </Link>
         ))}
       </div>
