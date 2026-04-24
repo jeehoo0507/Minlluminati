@@ -75,19 +75,24 @@ export async function GET(req: NextRequest) {
     prisma.problem.count({ where }),
   ])
 
-  // Calculate solve rates
-  const problemsWithStats = await Promise.all(
-    problems.map(async (p) => {
-      const correctCount = await prisma.problemSubmission.count({
-        where: { problemId: p.id, correct: true },
-      })
-      return {
-        ...p,
-        solveRate: p._count.submissions > 0 ? Math.round((correctCount / p._count.submissions) * 100) : 0,
-        correctCount,
-      }
-    })
-  )
+  // Calculate solve rates — single query instead of N+1
+  const problemIds = problems.map((p) => p.id)
+  const correctCounts = await prisma.problemSubmission.groupBy({
+    by: ['problemId'],
+    where: { problemId: { in: problemIds }, correct: true },
+    _count: { problemId: true },
+  })
+  const correctMap: Record<string, number> = {}
+  for (const c of correctCounts) correctMap[c.problemId] = c._count.problemId
+
+  const problemsWithStats = problems.map((p) => {
+    const correctCount = correctMap[p.id] ?? 0
+    return {
+      ...p,
+      solveRate: p._count.submissions > 0 ? Math.round((correctCount / p._count.submissions) * 100) : 0,
+      correctCount,
+    }
+  })
 
   return NextResponse.json({ problems: problemsWithStats, total, page, pages: Math.ceil(total / limit) })
 }
@@ -105,6 +110,8 @@ export async function POST(req: NextRequest) {
   if (!title?.trim() || !content?.trim()) {
     return NextResponse.json({ error: '제목과 내용은 필수입니다' }, { status: 400 })
   }
+  if (title.trim().length > 200) return NextResponse.json({ error: '제목은 200자 이하여야 합니다' }, { status: 400 })
+  if (content.trim().length > 20000) return NextResponse.json({ error: '내용은 20000자 이하여야 합니다' }, { status: 400 })
   if (!essayMode && !isMultiPart && !answer?.trim()) {
     return NextResponse.json({ error: '정답을 입력해주세요' }, { status: 400 })
   }

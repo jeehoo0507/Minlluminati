@@ -53,6 +53,7 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
 
   const { content } = await req.json()
   if (!content?.trim()) return NextResponse.json({ error: '내용을 입력하세요' }, { status: 400 })
+  if (content.trim().length > 500) return NextResponse.json({ error: '채팅은 500자 이하여야 합니다' }, { status: 400 })
 
   const chat = await prisma.contestChat.create({
     data: { contestId: params.id, authorId: session.user.id, content: content.trim() },

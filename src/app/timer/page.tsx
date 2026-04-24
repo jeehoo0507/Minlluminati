@@ -35,13 +35,19 @@ export default function TimerPage() {
 
   useEffect(() => {
     // Restore timer state from localStorage
-    const stored = localStorage.getItem('studyTimerStart')
-    if (stored) {
-      const start = parseInt(stored)
-      startRef.current = start
-      setRunning(true)
-      setElapsed(Math.floor((Date.now() - start) / 1000))
-    }
+    try {
+      const stored = localStorage.getItem('studyTimerStart')
+      if (stored) {
+        const start = parseInt(stored, 10)
+        if (!isNaN(start) && start > 0 && start <= Date.now()) {
+          startRef.current = start
+          setRunning(true)
+          setElapsed(Math.floor((Date.now() - start) / 1000))
+        } else {
+          localStorage.removeItem('studyTimerStart')
+        }
+      }
+    } catch {}  // localStorage 접근 불가 환경 대비
     loadStats()
   }, [session])
 

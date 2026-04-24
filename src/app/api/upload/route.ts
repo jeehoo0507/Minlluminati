@@ -23,7 +23,13 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: '지원하지 않는 파일 형식입니다' }, { status: 400 })
   }
 
-  const ext = file.name.split('.').pop() ?? 'bin'
+  // MIME 기반 확장자 결정 (사용자 파일명 신뢰 안 함)
+  const MIME_TO_EXT: Record<string, string> = {
+    'image/jpeg': 'jpg', 'image/png': 'png',
+    'image/gif': 'gif', 'image/webp': 'webp',
+    'application/pdf': 'pdf',
+  }
+  const ext = MIME_TO_EXT[file.type] ?? 'bin'
   const filename = `${nanoid()}.${ext}`
   const filepath = path.join(UPLOAD_DIR, filename)
 

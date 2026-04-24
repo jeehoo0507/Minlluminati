@@ -71,16 +71,16 @@ export function StreakChart({ streakMap, year, streak, onYearChange }: Props) {
           <span>{totalContribs}개 기여</span>
         </div>
       </div>
-      <div className="overflow-x-auto">
-        <div className="flex gap-1 min-w-max">
-          <div className="flex flex-col gap-0.5 mr-1 pt-5">
+      <div className="overflow-x-auto -mx-1 px-1" style={{ WebkitOverflowScrolling: 'touch' }}>
+        <div className="flex gap-[3px] min-w-max">
+          <div className="flex flex-col gap-[3px] mr-0.5 pt-5">
             {days.map((d, i) => (
-              <div key={d} className={`h-3 text-[9px] text-muted leading-3 ${i % 2 === 0 ? '' : 'opacity-0'}`}>{d}</div>
+              <div key={d} className={`h-[10px] text-[8px] text-muted leading-[10px] ${i % 2 === 0 ? '' : 'opacity-0'}`}>{d}</div>
             ))}
           </div>
           {weeks.map((week, wi) => (
-            <div key={wi} className="flex flex-col gap-0.5">
-              <div className="h-4 text-[9px] text-muted leading-4 truncate w-3">
+            <div key={wi} className="flex flex-col gap-[3px]">
+              <div className="h-4 text-[8px] text-muted leading-4 truncate w-[10px]">
                 {week[0] && new Date(week[0].date + 'T00:00:00').getDate() <= 7 && new Date(week[0].date + 'T00:00:00').getFullYear() === year
                   ? months[new Date(week[0].date + 'T00:00:00').getMonth()].slice(0, 2)
                   : ''}
@@ -89,7 +89,7 @@ export function StreakChart({ streakMap, year, streak, onYearChange }: Props) {
                 <div
                   key={day.date}
                   title={day.count >= 0 ? `${day.date}: ${day.count}개` : ''}
-                  className={`w-3 h-3 rounded-sm ${getColor(day.count)} transition-colors ${day.date === todayStr ? 'ring-1 ring-accent ring-offset-1 ring-offset-background' : ''}`}
+                  className={`w-[10px] h-[10px] rounded-sm ${getColor(day.count)} transition-colors ${day.date === todayStr ? 'ring-1 ring-accent ring-offset-1 ring-offset-background' : ''}`}
                 />
               ))}
             </div>

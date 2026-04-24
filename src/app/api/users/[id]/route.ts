@@ -17,7 +17,8 @@ export async function GET(_: NextRequest, { params }: { params: { id: string } }
       posts: {
         where: { deletedAt: null },
         select: { id: true, subject: true, pointsAwarded: true, createdAt: true },
-        orderBy: { createdAt: 'asc' },
+        orderBy: { createdAt: 'desc' },
+        take: 200, // 스트릭/레이더 계산용, 최신 200개로 제한
       },
     },
   })

@@ -53,8 +53,8 @@ export function PointLineChart({ data, year, onYearChange }: Props) {
   return (
     <div className="space-y-2">
       <YearNav year={year} currentYear={currentYear} onYearChange={onYearChange} maxPt={maxPt} />
-      <div className="w-full overflow-x-auto">
-        <svg viewBox={`0 0 ${W} ${H}`} className="w-full" style={{ minWidth: 300 }}>
+      <div className="w-full overflow-x-auto" style={{ WebkitOverflowScrolling: 'touch' }}>
+        <svg viewBox={`0 0 ${W} ${H}`} className="w-full" style={{ minWidth: 260 }}>
           <defs>
             <linearGradient id="ptGrad" x1="0" y1="0" x2="0" y2="1">
               <stop offset="0%" stopColor="rgb(37 99 235)" stopOpacity="0.25" />

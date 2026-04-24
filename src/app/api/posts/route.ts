@@ -67,6 +67,8 @@ export async function POST(req: NextRequest) {
   if (!title?.trim() || !content?.trim() || !subject) {
     return NextResponse.json({ error: '제목, 내용, 과목은 필수입니다' }, { status: 400 })
   }
+  if (title.trim().length > 200) return NextResponse.json({ error: '제목은 200자 이하여야 합니다' }, { status: 400 })
+  if (content.trim().length > 20000) return NextResponse.json({ error: '내용은 20000자 이하여야 합니다' }, { status: 400 })
 
   const maxResult = await prisma.post.aggregate({ _max: { postNumber: true } })
   const nextNumber = (maxResult._max.postNumber ?? 0) + 1
