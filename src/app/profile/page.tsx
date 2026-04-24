@@ -18,6 +18,8 @@ interface ProfileData {
   pointTimeline: { date: string; points: number }[]
   radarData: { label: string; value: number }[]
   solvedProblems: { id: string; problemNumber: number; title: string; subject: string | null }[]
+  isMaster: boolean
+  isFirstRuby: boolean
 }
 
 export default function ProfilePage() {
@@ -152,10 +154,17 @@ export default function ProfilePage() {
             <input ref={fileRef} type="file" accept="image/*" className="hidden" onChange={handleImageChange} />
           </div>
           <div>
-            <p className="font-semibold text-text-primary text-lg">{name || '?'}</p>
+            <div className="flex items-center gap-2 flex-wrap">
+              <p className="font-semibold text-text-primary text-lg">{name || '?'}</p>
+              {profileData?.isFirstRuby && (
+                <span className="text-xs font-medium italic" style={{ color: '#9ca3af' }}>first ruby</span>
+              )}
+            </div>
             <div className="flex items-center gap-2 mt-0.5">
-              <TierBadge points={session.user.points ?? 0} />
-              <span className="text-sm font-semibold" style={{ color: tier.color }}>{tier.name}</span>
+              <TierBadge points={session.user.points ?? 0} isMaster={profileData?.isMaster ?? false} />
+              <span className="text-sm font-semibold" style={{ color: profileData?.isMaster ? '#f59e0b' : tier.color }}>
+                {profileData?.isMaster ? '마스터' : tier.name}
+              </span>
               <span className="text-sm text-muted">· {(session.user.points ?? 0).toLocaleString()}pt</span>
             </div>
             <p className="text-xs text-muted mt-0.5">{uploading ? '업로드 중...' : '카메라 버튼으로 사진 변경'}</p>

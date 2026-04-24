@@ -107,7 +107,7 @@ export function Header() {
                   {bellOpen && (
                     <>
                       <div className="fixed inset-0 z-10" onClick={() => setBellOpen(false)} />
-                      <div className="absolute right-0 top-full mt-2 w-80 max-w-[calc(100vw-1rem)] bg-surface border border-border rounded-xl shadow-2xl z-20 overflow-hidden animate-fade-in">
+                      <div className="fixed top-14 right-2 w-80 max-w-[calc(100vw-1rem)] bg-surface border border-border rounded-xl shadow-2xl z-20 overflow-hidden animate-fade-in">
                         <div className="flex items-center justify-between px-3 py-2.5 border-b border-border">
                           <span className="text-sm font-semibold text-text-primary">알림</span>
                           {unread > 0 && <button onClick={markAllRead} className="text-xs text-accent hover:underline">모두 읽음</button>}
@@ -158,7 +158,7 @@ export function Header() {
                   {dropOpen && (
                     <>
                       <div className="fixed inset-0 z-10" onClick={() => setDropOpen(false)} />
-                      <div className="absolute right-0 top-full mt-2 w-48 max-w-[calc(100vw-1rem)] bg-surface border border-border rounded-xl shadow-2xl z-20 py-1 animate-fade-in">
+                      <div className="fixed top-14 right-2 w-48 bg-surface border border-border rounded-xl shadow-2xl z-20 py-1 animate-fade-in">
                         <div className="px-3 py-2 border-b border-border">
                           <p className="text-sm font-semibold text-text-primary truncate">{session.user.name}</p>
                           <p className="text-xs text-text-secondary truncate">{session.user.email}</p>

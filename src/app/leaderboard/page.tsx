@@ -14,6 +14,7 @@ interface LeaderUser {
   image?: string | null
   points: number
   role: string
+  isMaster: boolean
   _count: { posts: number }
 }
 
@@ -93,7 +94,7 @@ export default function LeaderboardPage() {
                   <div className="flex items-center gap-2">
                     <span className="text-sm font-medium text-text-primary truncate">{user.name ?? '?'}</span>
                     {isMe && <span className="text-xs text-accent">(나)</span>}
-                    <TierBadge points={user.points} />
+                    <TierBadge points={user.points} isMaster={user.isMaster} />
                   </div>
                   <div className="flex items-center gap-3 mt-0.5">
                     <span className="flex items-center gap-1 text-xs text-muted">

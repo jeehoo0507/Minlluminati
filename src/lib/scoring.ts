@@ -28,8 +28,47 @@ export const TIERS = [
   { name: '루비',    min: 2000, max: Infinity,    color: '#be123c', bg: '#fff1f2' },
 ] as const
 
+// 상위 123명은 포인트와 무관하게 마스터
+export const MASTER_COUNT = 123
+export const MASTER_TIER = { name: '마스터', color: '#f59e0b', bg: '#1e1b4b' } as const
+
 export function getTier(points: number) {
   return TIERS.findLast((t) => points >= t.min) ?? TIERS[0]
+}
+
+// 최초 루비 달성자 ID 조회 (PointHistory 기반)
+export async function getFirstRubyUserId(): Promise<string | null> {
+  const cached = await prisma.systemConfig.findUnique({ where: { key: 'first_ruby_user_id' } })
+  if (cached) return cached.value
+
+  const rubyUsers = await prisma.user.findMany({
+    where: { points: { gte: 2000 } },
+    select: { id: true },
+  })
+  if (rubyUsers.length === 0) return null
+
+  const userIds = rubyUsers.map((u) => u.id)
+  const histories = await prisma.pointHistory.findMany({
+    where: { userId: { in: userIds } },
+    orderBy: { createdAt: 'asc' },
+    select: { userId: true, delta: true },
+  })
+
+  const cumulative: Record<string, number> = {}
+  let firstRubyUserId: string | null = null
+  for (const h of histories) {
+    cumulative[h.userId] = (cumulative[h.userId] ?? 0) + h.delta
+    if (cumulative[h.userId] >= 2000) { firstRubyUserId = h.userId; break }
+  }
+
+  if (firstRubyUserId) {
+    await prisma.systemConfig.upsert({
+      where: { key: 'first_ruby_user_id' },
+      create: { key: 'first_ruby_user_id', value: firstRubyUserId },
+      update: { value: firstRubyUserId },
+    })
+  }
+  return firstRubyUserId
 }
 
 

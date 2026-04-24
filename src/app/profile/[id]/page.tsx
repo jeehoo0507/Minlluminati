@@ -25,6 +25,8 @@ interface UserProfile {
   radarData: { label: string; value: number }[]
   solvedProblems: { id: string; problemNumber: number; title: string; subject: string | null }[]
   isRival: boolean
+  isMaster: boolean
+  isFirstRuby: boolean
   rivals: { id: string; name?: string | null; image?: string | null; points: number }[]
 }
 
@@ -96,10 +98,17 @@ export default function PublicProfilePage() {
           <div className="flex-1 min-w-0">
             <div className="flex items-start justify-between gap-2">
               <div>
-                <h1 className="text-xl font-bold text-text-primary">{profile.name ?? '?'}</h1>
+                <div className="flex items-center gap-2 flex-wrap">
+                  <h1 className="text-xl font-bold text-text-primary">{profile.name ?? '?'}</h1>
+                  {profile.isFirstRuby && (
+                    <span className="text-xs font-medium italic" style={{ color: '#9ca3af' }}>first ruby</span>
+                  )}
+                </div>
                 <div className="flex items-center gap-2 mt-1">
-                  <TierBadge points={profile.points} />
-                  <span className="text-sm font-semibold" style={{ color: tier.color }}>{tier.name}</span>
+                  <TierBadge points={profile.points} isMaster={profile.isMaster} />
+                  <span className="text-sm font-semibold" style={{ color: profile.isMaster ? '#f59e0b' : tier.color }}>
+                    {profile.isMaster ? '마스터' : tier.name}
+                  </span>
                   <span className="text-sm text-muted">· {profile.points.toLocaleString()}pt</span>
                 </div>
               </div>
