@@ -33,11 +33,22 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
 
   const post = await prisma.post.findFirst({ where: findWhere(params.id) })
   if (!post) return NextResponse.json({ error: 'Not found' }, { status: 404 })
-  if (post.authorId !== session.user.id && session.user.role !== 'ADMIN') {
+
+  const isAdmin = session.user.role === 'ADMIN'
+  const isOwner = session.user.role === 'OWNER'
+  const isAuthor = post.authorId === session.user.id
+
+  if (!isAuthor && !isAdmin && !isOwner) {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
   }
 
-  const { title, content, subject, unit, type } = await req.json()
+  const { title, content, subject, unit, type, pinned } = await req.json()
+
+  // 고정/해제는 ADMIN/OWNER만 가능
+  if (pinned !== undefined && !isAdmin && !isOwner) {
+    return NextResponse.json({ error: '고정 권한이 없습니다' }, { status: 403 })
+  }
+
   const updated = await prisma.post.update({
     where: { id: post.id },
     data: {
@@ -46,6 +57,7 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
       ...(subject ? { subject } : {}),
       ...(unit !== undefined ? { unit } : {}),
       ...(type ? { type } : {}),
+      ...(pinned !== undefined ? { pinned: Boolean(pinned) } : {}),
     },
   })
   return NextResponse.json(updated)

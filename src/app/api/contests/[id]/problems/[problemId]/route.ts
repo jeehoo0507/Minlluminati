@@ -31,7 +31,7 @@ export async function PATCH(
     return NextResponse.json({ error: '진행 중이거나 종료된 대회는 수정할 수 없습니다' }, { status: 400 })
   }
 
-  const { title, content, answer, extraAnswers, subAnswers, points, label, imageUrls, allowRetry } = await req.json()
+  const { title, content, answer, extraAnswers, subAnswers, points, label, imageUrls, allowRetry, isEssay } = await req.json()
 
   const updated = await prisma.contestProblem.update({
     where: { id: params.problemId },
@@ -45,6 +45,7 @@ export async function PATCH(
       ...(label !== undefined ? { label } : {}),
       ...(imageUrls !== undefined ? { imageUrls: JSON.stringify(imageUrls) } : {}),
       ...(allowRetry !== undefined ? { allowRetry } : {}),
+      ...(isEssay !== undefined ? { isEssay: Boolean(isEssay) } : {}),
     },
   })
 

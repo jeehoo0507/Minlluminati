@@ -4,7 +4,7 @@ import { useSession } from 'next-auth/react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { SUBJECTS, PROBLEM_SUBJECTS, type SubjectKey } from '@/lib/utils'
-import { ArrowLeft, ImagePlus, X, Info, Plus, Layers } from 'lucide-react'
+import { ArrowLeft, ImagePlus, X, Info, Plus, FileText } from 'lucide-react'
 import toast from 'react-hot-toast'
 
 interface SubAnswerDef {
@@ -28,7 +28,8 @@ export default function NewProblemPage() {
   const [uploading, setUploading] = useState(false)
   const [submitting, setSubmitting] = useState(false)
 
-  // Multi-part answer state
+  // Answer mode state
+  const [isEssay, setIsEssay] = useState(false)
   const [multiPartMode, setMultiPartMode] = useState(false)
   const [subAnswers, setSubAnswers] = useState<SubAnswerDef[]>([
     { label: '(1)', answer: '', extra: [] },
@@ -111,23 +112,16 @@ export default function NewProblemPage() {
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
 
-    if (multiPartMode) {
-      if (!title.trim() || !content.trim()) {
-        toast.error('제목과 내용을 입력해주세요')
-        return
-      }
-      if (subAnswers.length === 0) {
-        toast.error('답변 슬롯을 최소 하나 추가해주세요')
-        return
-      }
-      if (subAnswers.some((s) => !s.answer.trim())) {
-        toast.error('모든 답변 슬롯에 정답을 입력해주세요')
-        return
-      }
-    } else {
-      if (!title.trim() || !content.trim() || !answer.trim()) {
-        toast.error('제목, 내용, 정답을 모두 입력해주세요')
-        return
+    if (!title.trim() || !content.trim()) {
+      toast.error('제목과 내용을 입력해주세요')
+      return
+    }
+    if (!isEssay) {
+      if (multiPartMode) {
+        if (subAnswers.length === 0) { toast.error('답변 슬롯을 최소 하나 추가해주세요'); return }
+        if (subAnswers.some((s) => !s.answer.trim())) { toast.error('모든 답변 슬롯에 정답을 입력해주세요'); return }
+      } else {
+        if (!answer.trim()) { toast.error('정답을 입력해주세요'); return }
       }
     }
 
@@ -139,11 +133,12 @@ export default function NewProblemPage() {
         body: JSON.stringify({
           title: title.trim(),
           content: content.trim(),
-          answer: multiPartMode ? '[multi-part]' : answer.trim(),
+          answer: isEssay ? '[essay]' : multiPartMode ? '[multi-part]' : answer.trim(),
           subject: subject || null,
           requestedPts,
           imageUrls,
-          subAnswers: multiPartMode ? subAnswers : [],
+          subAnswers: multiPartMode && !isEssay ? subAnswers : [],
+          isEssay,
         }),
       })
       if (res.ok) {
@@ -159,9 +154,11 @@ export default function NewProblemPage() {
     }
   }
 
-  const canSubmit = multiPartMode
-    ? !!(title.trim() && content.trim() && subAnswers.length > 0 && subAnswers.every((s) => s.answer.trim()))
-    : !!(title.trim() && content.trim() && answer.trim())
+  const canSubmit = isEssay
+    ? !!(title.trim() && content.trim())
+    : multiPartMode
+      ? !!(title.trim() && content.trim() && subAnswers.length > 0 && subAnswers.every((s) => s.answer.trim()))
+      : !!(title.trim() && content.trim() && answer.trim())
 
   return (
     <div className="max-w-3xl mx-auto px-4 py-8 space-y-6">
@@ -251,25 +248,39 @@ export default function NewProblemPage() {
           <input ref={fileRef} type="file" accept="image/*" multiple className="hidden" onChange={handleImageUpload} />
         </div>
 
-        {/* Answer mode toggle */}
+        {/* Answer mode selector */}
         <div className="space-y-3">
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-2 flex-wrap">
             <label className="text-sm font-medium text-text-primary">정답 방식</label>
             <button
               type="button"
-              onClick={() => setMultiPartMode((v) => !v)}
-              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium border transition-colors ${
-                multiPartMode
-                  ? 'bg-accent/10 text-accent border-accent/30'
-                  : 'text-text-secondary border-border hover:border-accent/30 hover:text-accent'
-              }`}
+              onClick={() => { setIsEssay(false); setMultiPartMode(false) }}
+              className={`px-3 py-1.5 rounded-lg text-xs font-medium border transition-colors ${!multiPartMode && !isEssay ? 'bg-accent text-white border-accent' : 'text-text-secondary border-border hover:border-accent/40 hover:text-accent'}`}
             >
-              <Layers size={13} />
-              {multiPartMode ? '다중 필수 답변 (클릭하면 단일로)' : '단일 답변 (클릭하면 다중으로)'}
+              단일 답변
+            </button>
+            <button
+              type="button"
+              onClick={() => { setIsEssay(false); setMultiPartMode(true) }}
+              className={`px-3 py-1.5 rounded-lg text-xs font-medium border transition-colors ${multiPartMode && !isEssay ? 'bg-accent text-white border-accent' : 'text-text-secondary border-border hover:border-accent/40 hover:text-accent'}`}
+            >
+              다중 필수 답변
+            </button>
+            <button
+              type="button"
+              onClick={() => { setIsEssay(true); setMultiPartMode(false) }}
+              className={`flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-medium border transition-colors ${isEssay ? 'bg-accent text-white border-accent' : 'text-text-secondary border-border hover:border-accent/40 hover:text-accent'}`}
+            >
+              <FileText size={11} /> 서술형
             </button>
           </div>
 
-          {!multiPartMode ? (
+          {isEssay ? (
+            <div className="p-3 bg-accent/5 border border-accent/20 rounded-xl">
+              <p className="text-xs text-accent font-medium mb-1">📝 서술형 문제</p>
+              <p className="text-xs text-muted">풀이자가 글과 이미지로 답안을 제출합니다. 출제자 또는 관리자가 검토 후 승인/반려합니다. 승인 시 정답 처리 및 포인트가 지급됩니다.</p>
+            </div>
+          ) : !multiPartMode ? (
             <div className="space-y-1.5">
               <p className="text-xs text-muted">정답은 대소문자 구분 없이, 공백 제외하고 비교됩니다</p>
               <input

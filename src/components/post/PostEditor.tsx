@@ -1,5 +1,5 @@
 'use client'
-import { useState, useRef, useCallback } from 'react'
+import { useState, useRef, useCallback, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { useSession } from 'next-auth/react'
 import ReactMarkdown from 'react-markdown'
@@ -7,8 +7,10 @@ import remarkMath from 'remark-math'
 import rehypeKatex from 'rehype-katex'
 import remarkGfm from 'remark-gfm'
 import { SUBJECTS, UNITS, type SubjectKey } from '@/lib/utils'
-import { Upload, Eye, PenLine, X, FileText, Image as ImageIcon } from 'lucide-react'
+import { Upload, Eye, PenLine, X, FileText, Image as ImageIcon, Save } from 'lucide-react'
 import toast from 'react-hot-toast'
+
+const DRAFT_KEY = 'post_editor_draft'
 
 const TYPE_OPTIONS = [
   { value: 'PROBLEM', label: '문제' },
@@ -35,8 +37,40 @@ export function PostEditor({ initialSubject, initialType }: { initialSubject?: S
   const [dragOver, setDragOver] = useState(false)
   const [images, setImages] = useState<{ url: string; name: string }[]>([])
   const [attachments, setAttachments] = useState<{ url: string; name: string }[]>([])
+  const [lastSaved, setLastSaved] = useState<Date | null>(null)
+  const autoSaveRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   const units = UNITS[subject] ?? []
+
+  // 자동저장: 마운트 시 임시저장 복원
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem(DRAFT_KEY)
+      if (saved) {
+        const draft = JSON.parse(saved)
+        if (draft.title || draft.content) {
+          setTitle(draft.title ?? '')
+          setContent(draft.content ?? '')
+          if (draft.subject) setSubject(draft.subject)
+          if (draft.type) setType(draft.type)
+          setLastSaved(new Date(draft.savedAt))
+        }
+      }
+    } catch {}
+  }, [])
+
+  // 자동저장: 내용 변경 시 2초 후 저장
+  useEffect(() => {
+    if (!title && !content) return
+    if (autoSaveRef.current) clearTimeout(autoSaveRef.current)
+    autoSaveRef.current = setTimeout(() => {
+      try {
+        localStorage.setItem(DRAFT_KEY, JSON.stringify({ title, content, subject, type, savedAt: new Date().toISOString() }))
+        setLastSaved(new Date())
+      } catch {}
+    }, 2000)
+    return () => { if (autoSaveRef.current) clearTimeout(autoSaveRef.current) }
+  }, [title, content, subject, type])
 
   async function uploadFile(file: File): Promise<{ url: string; name: string } | null> {
     const fd = new FormData()
@@ -88,7 +122,13 @@ export function PostEditor({ initialSubject, initialType }: { initialSubject?: S
   }
 
   function handlePaste(e: React.ClipboardEvent<HTMLTextAreaElement>) {
-    const imageFiles = Array.from(e.clipboardData.files).filter((f) => f.type.startsWith('image/'))
+    // files: 파일 탐색기에서 복사, items: 스크린샷/웹 이미지 복사 (Ctrl+V)
+    const fromFiles = Array.from(e.clipboardData.files).filter((f) => f.type.startsWith('image/'))
+    const fromItems = Array.from(e.clipboardData.items)
+      .filter((item) => item.kind === 'file' && item.type.startsWith('image/'))
+      .map((item) => item.getAsFile())
+      .filter((f): f is File => f !== null)
+    const imageFiles = fromFiles.length > 0 ? fromFiles : fromItems
     if (!imageFiles.length) return
     e.preventDefault()
     processFiles(imageFiles)
@@ -97,9 +137,15 @@ export function PostEditor({ initialSubject, initialType }: { initialSubject?: S
   function handleDrop(e: React.DragEvent<HTMLDivElement>) {
     e.preventDefault()
     setDragOver(false)
-    const files = Array.from(e.dataTransfer.files).filter(
+    // dataTransfer.files가 비어있으면 items에서 시도
+    const fromFiles = Array.from(e.dataTransfer.files).filter(
       (f) => f.type.startsWith('image/') || f.type === 'application/pdf'
     )
+    const fromItems = Array.from(e.dataTransfer.items)
+      .filter((item) => item.kind === 'file' && (item.type.startsWith('image/') || item.type === 'application/pdf'))
+      .map((item) => item.getAsFile())
+      .filter((f): f is File => f !== null)
+    const files = fromFiles.length > 0 ? fromFiles : fromItems
     processFiles(files)
   }
 
@@ -119,6 +165,7 @@ export function PostEditor({ initialSubject, initialType }: { initialSubject?: S
       })
       if (!res.ok) { toast.error((await res.json()).error ?? '오류가 발생했습니다'); return }
       const post = await res.json()
+      localStorage.removeItem(DRAFT_KEY)
       toast.success('게시글이 등록되었습니다!')
       router.push(`/post/${post.id}`)
     } finally {
@@ -303,7 +350,29 @@ export function PostEditor({ initialSubject, initialType }: { initialSubject?: S
       </div>
 
       {/* Submit */}
-      <div className="flex justify-end gap-2 pt-2 border-t border-border">
+      <div className="flex items-center justify-between pt-2 border-t border-border">
+        <div className="flex items-center gap-2">
+          {lastSaved && (
+            <span className="flex items-center gap-1 text-xs text-muted">
+              <Save size={11} />
+              {lastSaved.toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' })} 자동저장
+            </span>
+          )}
+          {lastSaved && (
+            <button
+              type="button"
+              onClick={() => {
+                localStorage.removeItem(DRAFT_KEY)
+                setTitle(''); setContent(''); setLastSaved(null)
+                toast.success('임시저장 초기화')
+              }}
+              className="text-xs text-muted hover:text-red-400 transition-colors"
+            >
+              초기화
+            </button>
+          )}
+        </div>
+        <div className="flex gap-2">
         <button
           onClick={() => router.back()}
           className="px-4 py-2 rounded-lg text-sm text-text-secondary hover:text-text-primary hover:bg-surface-2 transition-colors"
@@ -317,6 +386,7 @@ export function PostEditor({ initialSubject, initialType }: { initialSubject?: S
         >
           {loading ? '등록 중...' : '등록하기'}
         </button>
+        </div>
       </div>
     </div>
   )

@@ -64,43 +64,8 @@ export async function GET(_: NextRequest, { params }: { params: { id: string } }
     streakMap[key] = (streakMap[key] ?? 0) + 1
   }
 
-  // Point timeline: monthly cumulative from posts + PointHistory
-  const historyEntries = await prisma.pointHistory.findMany({
-    where: { userId },
-    orderBy: { createdAt: 'asc' },
-    select: { delta: true, createdAt: true, subject: true },
-  })
-
-  // If no history yet (old user), derive from posts
-  const rawEvents: { date: Date; delta: number; subject: string | null }[] = historyEntries.length > 0
-    ? historyEntries.map((h) => ({ date: new Date(h.createdAt), delta: h.delta, subject: h.subject }))
-    : user.posts.map((p) => ({ date: new Date(p.createdAt), delta: p.pointsAwarded, subject: p.subject }))
-
-  rawEvents.sort((a, b) => a.date.getTime() - b.date.getTime())
-
-  // Build monthly cumulative timeline
-  const monthlyMap: Record<string, number> = {}
-  let cumulative = 0
-  for (const ev of rawEvents) {
-    const key = ev.date.toISOString().slice(0, 7) // YYYY-MM
-    cumulative += ev.delta
-    monthlyMap[key] = cumulative
-  }
-  // Fill in missing months so the chart is continuous
-  const pointTimeline: { month: string; points: number }[] = []
-  if (rawEvents.length > 0) {
-    const first = rawEvents[0].date
-    const now = new Date()
-    const cur = new Date(first.getFullYear(), first.getMonth(), 1)
-    let prev = 0
-    while (cur <= now) {
-      const key = cur.toISOString().slice(0, 7)
-      const val = monthlyMap[key] ?? prev
-      pointTimeline.push({ month: key, points: val })
-      prev = val
-      cur.setMonth(cur.getMonth() + 1)
-    }
-  }
+  // pointTimeline is now served by /api/users/[id]/points — keep empty for compat
+  const pointTimeline: { date: string; points: number }[] = []
 
   // Radar data: 6개 활동 축
   const COMMUNITY_SUBJECTS = ['QUESTION', 'BOARD', 'FREE', 'TIPS']
@@ -125,12 +90,12 @@ export async function GET(_: NextRequest, { params }: { params: { id: string } }
   const contestParticipantCount = await prisma.contestParticipant.count({ where: { userId } })
 
   const radarData = [
-    { label: '문제 풀기',    value: solvedCount },
-    { label: '문제 출제',    value: uploadedCount },
-    { label: '커뮤니티',     value: communityCount },
-    { label: '학문 기여',    value: academicCount },
-    { label: '대회 출제·검토', value: contestContribCount },
-    { label: '대회 참가',    value: contestParticipantCount },
+    { label: '문제 풀기',      value: solvedCount },
+    { label: '문제 출제',      value: uploadedCount },
+    { label: '커뮤니티',       value: communityCount * 5 },
+    { label: '학문 기여',      value: academicCount * 5 },
+    { label: '대회 출제·검토', value: contestContribCount * 10 },
+    { label: '대회 참가',      value: contestParticipantCount * 10 },
   ]
 
   // Solved problems list

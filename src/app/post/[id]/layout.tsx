@@ -4,10 +4,10 @@ export async function generateMetadata({ params }: { params: { id: string } }): 
   try {
     const base = process.env.NEXTAUTH_URL?.replace(/\/$/, '') ?? 'http://localhost:3000'
     const res = await fetch(`${base}/api/posts/${params.id}`, { cache: 'no-store' })
-    if (!res.ok) return { title: 'Min(joon)lluminati' }
+    if (!res.ok) return { title: '양현재+' }
 
     const post = await res.json()
-    if (!post?.title) return { title: 'Min(joon)lluminati' }
+    if (!post?.title) return { title: '양현재+' }
 
     const description = (post.content ?? '')
       .replace(/!\[.*?\]\(.*?\)/g, '')
@@ -24,11 +24,11 @@ export async function generateMetadata({ params }: { params: { id: string } }): 
     return {
       title,
       description,
-      openGraph: { title, description, type: 'article', siteName: 'Min(joon)lluminati' },
+      openGraph: { title, description, type: 'article', siteName: '양현재+' },
       twitter: { card: 'summary', title, description },
     }
   } catch {
-    return { title: 'Min(joon)lluminati' }
+    return { title: '양현재+' }
   }
 }
 

@@ -35,13 +35,14 @@ export async function POST(req: NextRequest) {
   const session = await getAuth()
   if (!session?.user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
-  const { title, description, isPublic, groupId } = await req.json()
+  const { title, description, isPublic, groupId, imageUrl } = await req.json()
   if (!title?.trim()) return NextResponse.json({ error: '제목을 입력해주세요' }, { status: 400 })
 
   const set = await prisma.problemSet.create({
     data: {
       title: title.trim(),
       description: description?.trim() ?? '',
+      imageUrl: imageUrl ?? null,
       isPublic: isPublic ?? true,
       authorId: session.user.id,
       groupId: groupId ?? null,

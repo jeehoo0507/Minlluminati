@@ -18,6 +18,7 @@ const NAV_ITEMS = [
   { href: '/leaderboard', label: '랭킹' },
   { href: '/contests', label: '대회' },
   { href: '/groups', label: '그룹' },
+  { href: '/timer', label: '타이머' },
 ]
 
 export function Header() {
@@ -60,9 +61,10 @@ export function Header() {
       <header className="fixed top-0 left-0 right-0 z-50 h-14 border-b border-border bg-background/90 backdrop-blur-md">
         <div className="max-w-6xl mx-auto h-full px-4 flex items-center justify-between">
           {/* Logo */}
-          <Link href="/" className="flex items-center gap-2 group shrink-0">
-            <span className="text-accent font-bold text-lg tracking-tight">Min(joon)</span>
-            <span className="text-text-primary font-bold text-lg tracking-tight">lluminati</span>
+          <Link href="/" className="flex items-center group shrink-0">
+            <span className="text-text-primary font-bold text-lg tracking-tight">yang</span>
+            <span className="text-accent font-bold text-lg tracking-tight">now</span>
+            <span className="text-accent font-black text-xl tracking-tight">+</span>
           </Link>
 
           {/* Desktop Nav */}

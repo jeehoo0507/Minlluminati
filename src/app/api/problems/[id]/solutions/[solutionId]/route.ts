@@ -25,6 +25,37 @@ export async function GET(_: NextRequest, { params }: { params: { id: string; so
   return NextResponse.json(solution)
 }
 
+export async function PATCH(req: NextRequest, { params }: { params: { id: string; solutionId: string } }) {
+  const session = await getAuth()
+  if (!session?.user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+
+  const solution = await prisma.problemSolution.findUnique({ where: { id: params.solutionId } })
+  if (!solution || solution.problemId !== params.id) {
+    return NextResponse.json({ error: 'Not found' }, { status: 404 })
+  }
+
+  const isAuthor = solution.authorId === session.user.id
+  const isAdmin = session.user.role === 'ADMIN'
+  if (!isAuthor && !isAdmin) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+
+  const { content, imageUrls } = await req.json()
+  if (!content?.trim()) return NextResponse.json({ error: '풀이 내용을 입력해주세요' }, { status: 400 })
+
+  const updated = await prisma.problemSolution.update({
+    where: { id: params.solutionId },
+    data: {
+      content: content.trim(),
+      imageUrls: JSON.stringify(imageUrls ?? []),
+    },
+    include: {
+      author: { select: { id: true, name: true, image: true, points: true } },
+      _count: { select: { comments: true } },
+    },
+  })
+
+  return NextResponse.json(updated)
+}
+
 export async function DELETE(_: NextRequest, { params }: { params: { id: string; solutionId: string } }) {
   const session = await getAuth()
   if (!session?.user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })

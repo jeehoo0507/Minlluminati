@@ -79,6 +79,32 @@ export async function GET(_: NextRequest, { params }: { params: { id: string } }
   })
 }
 
+export async function PATCH(req: NextRequest, { params }: { params: { id: string } }) {
+  const session = await getAuth()
+  if (!session?.user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+
+  const set = await prisma.problemSet.findUnique({ where: { id: params.id } })
+  if (!set) return NextResponse.json({ error: 'Not found' }, { status: 404 })
+
+  const isAuthor = set.authorId === session.user.id
+  const isAdmin = session.user.role === 'ADMIN'
+  if (!isAuthor && !isAdmin) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+
+  const { title, description, imageUrl, isPublic } = await req.json()
+
+  const updated = await prisma.problemSet.update({
+    where: { id: params.id },
+    data: {
+      ...(title !== undefined && { title: title.trim() }),
+      ...(description !== undefined && { description: description.trim() }),
+      ...(imageUrl !== undefined && { imageUrl: imageUrl ?? null }),
+      ...(isPublic !== undefined && { isPublic }),
+    },
+  })
+
+  return NextResponse.json(updated)
+}
+
 export async function DELETE(_: NextRequest, { params }: { params: { id: string } }) {
   const session = await getAuth()
   if (!session?.user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })

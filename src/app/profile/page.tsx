@@ -15,7 +15,7 @@ import toast from 'react-hot-toast'
 interface RivalUser { id: string; name?: string | null; image?: string | null; points: number }
 interface ProfileData {
   streakMap: Record<string, number>
-  pointTimeline: { month: string; points: number }[]
+  pointTimeline: { date: string; points: number }[]
   radarData: { label: string; value: number }[]
   solvedProblems: { id: string; problemNumber: number; title: string; subject: string | null }[]
 }
@@ -32,6 +32,10 @@ export default function ProfilePage() {
   const [saving, setSaving] = useState(false)
   const [profileData, setProfileData] = useState<ProfileData | null>(null)
   const [rivals, setRivals] = useState<RivalUser[]>([])
+  const [streakYear, setStreakYear] = useState(new Date().getFullYear())
+  const [streakData, setStreakData] = useState<{ streakMap: Record<string, number>; streak: number } | null>(null)
+  const [pointYear, setPointYear] = useState(new Date().getFullYear())
+  const [pointData, setPointData] = useState<{ date: string; points: number }[]>([])
 
   // Password change
   const [showPwChange, setShowPwChange] = useState(false)
@@ -40,12 +44,24 @@ export default function ProfilePage() {
   const [confirmPw, setConfirmPw] = useState('')
   const [pwLoading, setPwLoading] = useState(false)
 
+  async function loadStreak(userId: string, year: number) {
+    const res = await fetch(`/api/users/${userId}/streak?year=${year}`)
+    if (res.ok) setStreakData(await res.json())
+  }
+
+  async function loadPoints(userId: string, year: number) {
+    const res = await fetch(`/api/users/${userId}/points?year=${year}`)
+    if (res.ok) { const d = await res.json(); setPointData(d.timeline) }
+  }
+
   useEffect(() => {
     if (!session?.user) return
     setName(session.user.name ?? '')
     setImage(session.user.image ?? null)
     fetch(`/api/users/${session.user.id}`).then((r) => r.json()).then(setProfileData)
     fetch('/api/rivals').then((r) => r.json()).then(setRivals)
+    loadStreak(session.user.id, streakYear)
+    loadPoints(session.user.id, pointYear)
   }, [session])
 
   if (!session?.user) { router.replace('/login'); return null }
@@ -195,10 +211,19 @@ export default function ProfilePage() {
             <h2 className="text-sm font-semibold text-text-secondary">활동 분석</h2>
             <Link href={`/profile/${session.user.id}`} className="text-xs text-accent hover:underline">공개 프로필 →</Link>
           </div>
-          <StreakChart streakMap={profileData.streakMap} />
+          <StreakChart
+            streakMap={streakData?.streakMap ?? profileData.streakMap ?? {}}
+            year={streakYear}
+            streak={streakData?.streak ?? 0}
+            onYearChange={(y) => { setStreakYear(y); if (session?.user) loadStreak(session.user.id, y) }}
+          />
           <div className="border-t border-border pt-4">
             <p className="text-xs text-text-secondary mb-2 font-medium">포인트 변화</p>
-            <PointLineChart data={profileData.pointTimeline} />
+            <PointLineChart
+              data={pointData}
+              year={pointYear}
+              onYearChange={(y) => { setPointYear(y); if (session?.user) loadPoints(session.user.id, y) }}
+            />
           </div>
           <div className="border-t border-border pt-4">
             <p className="text-xs text-text-secondary mb-2 font-medium">

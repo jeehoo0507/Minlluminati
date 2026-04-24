@@ -1,5 +1,5 @@
 'use client'
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { useSession } from 'next-auth/react'
 import { useParams, useRouter } from 'next/navigation'
 import Link from 'next/link'
@@ -7,7 +7,7 @@ import { Avatar } from '@/components/ui/Avatar'
 import { TierBadge } from '@/components/ui/TierBadge'
 import { ProblemTierBadge } from '@/components/ui/ProblemTierBadge'
 import { SUBJECTS, timeAgo, type SubjectKey, cn } from '@/lib/utils'
-import { ArrowLeft, BookOpen, Trash2, Plus, CheckCircle2, Circle, BarChart2, XCircle } from 'lucide-react'
+import { ArrowLeft, BookOpen, Trash2, Plus, CheckCircle2, Circle, BarChart2, XCircle, Camera } from 'lucide-react'
 import toast from 'react-hot-toast'
 
 interface Problem {
@@ -36,6 +36,7 @@ interface ProblemSet {
   id: string
   title: string
   description: string
+  imageUrl?: string | null
   isPublic: boolean
   authorId: string
   createdAt: string
@@ -53,6 +54,8 @@ export default function ProblemSetDetailPage() {
   const [loading, setLoading] = useState(true)
   const [addNumber, setAddNumber] = useState('')
   const [adding, setAdding] = useState(false)
+  const [imgUploading, setImgUploading] = useState(false)
+  const coverFileRef = useRef<HTMLInputElement>(null)
 
   const load = useCallback(async () => {
     const res = await fetch(`/api/problems/sets/${id}`)
@@ -104,6 +107,29 @@ export default function ProblemSetDetailPage() {
     else toast.error('삭제 실패')
   }
 
+  async function handleCoverUpload(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0]; if (!file) return
+    setImgUploading(true)
+    try {
+      const fd = new FormData(); fd.append('file', file)
+      const res = await fetch('/api/upload', { method: 'POST', body: fd })
+      if (!res.ok) { toast.error('업로드 실패'); return }
+      const { url } = await res.json()
+      const patch = await fetch(`/api/problems/sets/${id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ imageUrl: url }),
+      })
+      if (patch.ok) {
+        setSet((prev) => prev ? { ...prev, imageUrl: url } : prev)
+        toast.success('커버 이미지가 변경되었습니다')
+      } else { toast.error('저장 실패') }
+    } finally {
+      setImgUploading(false)
+      if (coverFileRef.current) coverFileRef.current.value = ''
+    }
+  }
+
   if (loading) return (
     <div className="max-w-4xl mx-auto px-4 py-8 space-y-4">
       {[1, 2, 3].map((i) => <div key={i} className="h-20 bg-surface border border-border rounded-xl animate-pulse" />)}
@@ -131,8 +157,20 @@ export default function ProblemSetDetailPage() {
       <div className="bg-surface border border-border rounded-2xl p-6 space-y-4">
         <div className="flex items-start justify-between gap-3">
           <div className="flex items-start gap-4">
-            <div className="w-14 h-14 rounded-xl bg-accent/10 flex items-center justify-center shrink-0">
-              <BookOpen size={24} className="text-accent" />
+            <div className="relative w-14 h-14 rounded-xl bg-accent/10 flex items-center justify-center shrink-0 overflow-hidden">
+              {set.imageUrl ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img src={set.imageUrl} alt={set.title} className="w-full h-full object-cover" />
+              ) : (
+                <BookOpen size={24} className="text-accent" />
+              )}
+              {canManage && (
+                <button onClick={() => coverFileRef.current?.click()} disabled={imgUploading}
+                  className="absolute inset-0 bg-black/50 opacity-0 hover:opacity-100 flex items-center justify-center transition-opacity rounded-xl">
+                  <Camera size={16} className="text-white" />
+                </button>
+              )}
+              <input ref={coverFileRef} type="file" accept="image/*" className="hidden" onChange={handleCoverUpload} />
             </div>
             <div>
               <h1 className="text-xl font-bold text-text-primary">{set.title}</h1>

@@ -5,6 +5,7 @@ import { PostCard } from '@/components/post/PostCard'
 import { useSession } from 'next-auth/react'
 import Link from 'next/link'
 import { Search, PenLine, RefreshCw } from 'lucide-react'
+import toast from 'react-hot-toast'
 
 interface Post {
   id: string
@@ -13,6 +14,7 @@ interface Post {
   subject: string
   unit?: string | null
   type: string
+  pinned: boolean
   createdAt: string
   author: { id: string; name?: string | null; image?: string | null; points: number }
   _count: { likes: number; comments: number }
@@ -20,6 +22,7 @@ interface Post {
 
 export default function FeedPage() {
   const { data: session } = useSession()
+  const [pinnedPosts, setPinnedPosts] = useState<Post[]>([])
   const [posts, setPosts] = useState<Post[]>([])
   const [total, setTotal] = useState(0)
   const [page, setPage] = useState(1)
@@ -27,6 +30,8 @@ export default function FeedPage() {
   const [search, setSearch] = useState('')
   const [query, setQuery] = useState('')
   const [loading, setLoading] = useState(false)
+
+  const canPin = session?.user?.role === 'ADMIN' || session?.user?.role === 'OWNER'
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -36,6 +41,7 @@ export default function FeedPage() {
       const res = await fetch(`/api/posts?${params}`)
       if (res.ok) {
         const data = await res.json()
+        setPinnedPosts(data.pinnedPosts ?? [])
         setPosts(data.posts)
         setTotal(data.total)
         setPages(data.pages)
@@ -51,6 +57,20 @@ export default function FeedPage() {
     e.preventDefault()
     setPage(1)
     setQuery(search)
+  }
+
+  async function handlePinToggle(postId: string, pinned: boolean) {
+    const res = await fetch(`/api/posts/${postId}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ pinned }),
+    })
+    if (res.ok) {
+      toast.success(pinned ? '글을 상단에 고정했습니다' : '고정을 해제했습니다')
+      load()
+    } else {
+      toast.error('오류가 발생했습니다')
+    }
   }
 
   return (
@@ -96,7 +116,17 @@ export default function FeedPage() {
           </button>
         </div>
 
-        {/* Posts */}
+        {/* Pinned posts — page 1, no search query */}
+        {page === 1 && !query && pinnedPosts.length > 0 && (
+          <div className="space-y-3">
+            {pinnedPosts.map((p) => (
+              <PostCard key={p.id} post={p} canPin={canPin} onPinToggle={handlePinToggle} />
+            ))}
+            <div className="border-t border-border/60" />
+          </div>
+        )}
+
+        {/* Regular posts */}
         {loading && posts.length === 0 ? (
           <div className="space-y-3">
             {Array.from({ length: 5 }).map((_, i) => (
@@ -105,9 +135,9 @@ export default function FeedPage() {
           </div>
         ) : posts.length > 0 ? (
           <div className="space-y-3">
-            {posts.map((p) => <PostCard key={p.id} post={p} />)}
+            {posts.map((p) => <PostCard key={p.id} post={p} canPin={canPin} onPinToggle={handlePinToggle} />)}
           </div>
-        ) : (
+        ) : pinnedPosts.length === 0 ? (
           <div className="text-center py-16">
             <p className="text-text-secondary">아직 게시글이 없습니다</p>
             {session?.user && (
@@ -116,7 +146,7 @@ export default function FeedPage() {
               </Link>
             )}
           </div>
-        )}
+        ) : null}
 
         {/* Pagination */}
         {pages > 1 && (

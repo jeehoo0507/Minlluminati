@@ -36,6 +36,21 @@
   --color-text-secondary: #9ca3af;
 }
 
+/* ─── Dev theme (dark + green) ─── */
+.dev {
+  --color-bg: #0d1117;
+  --color-surface: #161b22;
+  --color-surface-2: #1c2430;
+  --color-border: #1f3022;
+  --color-border-2: #2d4a30;
+  --color-accent: 34 197 94;       /* #22c55e */
+  --color-accent-dim: #16a34a;
+  --color-accent-light: #052e16;
+  --color-muted: #4b6b4e;
+  --color-text-primary: #cee8cf;
+  --color-text-secondary: #6b9e70;
+}
+
 * { box-sizing: border-box; }
 
 body {
@@ -79,6 +94,7 @@ body {
   color: #dc2626;
 }
 .dark .prose-content code { color: #f87171; }
+.dev .prose-content code { color: #4ade80; }
 .prose-content pre {
   background: var(--color-surface);
   border: 1px solid var(--color-border);

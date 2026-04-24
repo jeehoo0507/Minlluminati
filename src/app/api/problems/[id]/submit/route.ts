@@ -90,5 +90,25 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
     pointsAwarded = problem.approvedPts
   }
 
+  // 라이벌 알림: 처음으로 정답 맞힌 경우 → 이 유저를 라이벌로 등록한 모든 유저에게 알림
+  if (correct && !wasAlreadyCorrect) {
+    const solver = await prisma.user.findUnique({ where: { id: session.user.id }, select: { name: true } })
+    const rivalOf = await prisma.rival.findMany({
+      where: { rivalId: session.user.id },
+      select: { userId: true },
+    })
+    if (rivalOf.length > 0) {
+      await prisma.notification.createMany({
+        data: rivalOf.map((r) => ({
+          userId: r.userId,
+          type: 'RIVAL_SOLVED',
+          title: '라이벌이 문제를 풀었습니다',
+          content: `${solver?.name ?? '라이벌'}이(가) #${problem.problemNumber} "${problem.title}"을(를) 풀었습니다`,
+          link: `/problems/${params.id}`,
+        })),
+      })
+    }
+  }
+
   return NextResponse.json({ correct, pointsAwarded, multiPart: subAnswerDefs.length > 0 })
 }

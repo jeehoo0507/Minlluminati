@@ -57,7 +57,10 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
   let correct: boolean
   let storedAnswer: string
 
-  if (subAnswerDefs.length > 0) {
+  // 방어적 체크: answer === '[multi-part]' 이면서 subAnswerDefs가 비어있으면 multi-part 사용
+  const effectiveMultiPart = subAnswerDefs.length > 0 || problem.answer === '[multi-part]'
+
+  if (effectiveMultiPart && subAnswerDefs.length > 0) {
     // Multi-part mode
     if (!Array.isArray(parts) || parts.length !== subAnswerDefs.length) {
       return NextResponse.json({ error: '답변 개수가 맞지 않습니다' }, { status: 400 })
@@ -68,9 +71,12 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
       return allValid.some((a) => a === submitted)
     })
     storedAnswer = JSON.stringify(parts)
+  } else if (problem.answer === '[multi-part]' && subAnswerDefs.length === 0) {
+    // 문제 설정 오류: 서술형이거나 잘못된 설정
+    return NextResponse.json({ error: '문제 설정에 오류가 있습니다. 주최자에게 문의하세요' }, { status: 400 })
   } else {
     // Single mode
-    if (!answer) return NextResponse.json({ error: '필수 항목 누락' }, { status: 400 })
+    if (!answer) return NextResponse.json({ error: '답을 입력해주세요' }, { status: 400 })
     const normalizedAnswer = normalize(answer)
     const correctAnswer = normalize(problem.answer)
     let extraAnswers: string[] = []
@@ -104,6 +110,13 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
           where: { contestId_userId: { contestId: params.id, userId: session.user.id } },
           data: { score: { increment: problem.points } },
         })
+        // If team contest, update team score too
+        if (contest.teamContest) {
+          await tx.contestTeam.updateMany({
+            where: { contestId: params.id, members: { some: { userId: session.user.id } } },
+            data: { score: { increment: problem.points } },
+          })
+        }
       }
     }
   })

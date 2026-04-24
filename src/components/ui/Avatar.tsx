@@ -2,9 +2,10 @@ interface Props {
   name?: string | null
   image?: string | null
   size?: number
+  className?: string
 }
 
-export function Avatar({ name, image, size = 32 }: Props) {
+export function Avatar({ name, image, size = 32, className = '' }: Props) {
   const initials = name
     ? name
         .split(' ')
@@ -23,7 +24,7 @@ export function Avatar({ name, image, size = 32 }: Props) {
         width={size}
         height={size}
         style={{ width: size, height: size }}
-        className="rounded-full object-cover"
+        className={`rounded-full object-cover ${className}`}
       />
     )
   }
@@ -31,7 +32,7 @@ export function Avatar({ name, image, size = 32 }: Props) {
   return (
     <div
       style={{ width: size, height: size, fontSize: size * 0.4 }}
-      className="rounded-full bg-surface-2 border border-border flex items-center justify-center text-text-secondary font-semibold select-none"
+      className={`rounded-full bg-surface-2 border border-border flex items-center justify-center text-text-secondary font-semibold select-none ${className}`}
     >
       {initials}
     </div>

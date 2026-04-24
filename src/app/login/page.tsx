@@ -79,11 +79,10 @@ function LoginForm() {
   return (
     <div className="w-full max-w-sm mx-auto">
       <div className="text-center mb-8">
-        <h1 className="text-2xl font-bold text-text-primary tracking-tight">Min(joon)lluminati</h1>
-        <p className="text-sm text-text-secondary mt-1">하루 한 문제</p>
+        <h1 className="text-2xl font-bold text-text-primary tracking-tight">양현재<span className="text-accent">+</span></h1>
       </div>
 
-      <div className="border border-border rounded-lg p-6 bg-white shadow-sm">
+      <div className="border border-border rounded-lg p-6 bg-surface shadow-sm">
         {step === 'email' && (
           <form onSubmit={handleEmailNext} className="space-y-4">
             <div>
@@ -95,7 +94,7 @@ function LoginForm() {
                 placeholder="example@email.com"
                 required
                 autoFocus
-                className="w-full border border-border rounded px-3 py-2 text-sm focus:outline-none focus:border-accent focus:ring-1 focus:ring-accent"
+                className="w-full bg-background text-text-primary border border-border rounded px-3 py-2 text-sm focus:outline-none focus:border-accent focus:ring-1 focus:ring-accent placeholder:text-muted"
               />
             </div>
             <button
@@ -122,7 +121,7 @@ function LoginForm() {
                 placeholder="비밀번호 입력"
                 required
                 autoFocus
-                className="w-full border border-border rounded px-3 py-2 text-sm focus:outline-none focus:border-accent focus:ring-1 focus:ring-accent"
+                className="w-full bg-background text-text-primary border border-border rounded px-3 py-2 text-sm focus:outline-none focus:border-accent focus:ring-1 focus:ring-accent placeholder:text-muted"
               />
             </div>
             <button
@@ -146,13 +145,13 @@ function LoginForm() {
             <div>
               <label className="block text-sm font-medium text-text-primary mb-1.5">이름 (선택)</label>
               <input type="text" value={name} onChange={(e) => setName(e.target.value)} placeholder="이름이나 닉네임"
-                className="w-full border border-border rounded px-3 py-2 text-sm focus:outline-none focus:border-accent" />
+                className="w-full bg-background text-text-primary border border-border rounded px-3 py-2 text-sm focus:outline-none focus:border-accent placeholder:text-muted" />
             </div>
             <div>
               <label className="block text-sm font-medium text-text-primary mb-1.5">요청 메시지 (선택)</label>
               <textarea value={reqMessage} onChange={(e) => setReqMessage(e.target.value)} rows={2}
                 placeholder="가입 목적이나 소속 등을 적어주세요"
-                className="w-full border border-border rounded px-3 py-2 text-sm focus:outline-none focus:border-accent resize-none" />
+                className="w-full bg-background text-text-primary border border-border rounded px-3 py-2 text-sm focus:outline-none focus:border-accent resize-none placeholder:text-muted" />
             </div>
             <button
               type="button" disabled={loading}
@@ -200,7 +199,7 @@ function LoginForm() {
                 required
                 maxLength={20}
                 autoFocus
-                className="w-full border border-border rounded px-3 py-2 text-sm focus:outline-none focus:border-accent focus:ring-1 focus:ring-accent"
+                className="w-full bg-background text-text-primary border border-border rounded px-3 py-2 text-sm focus:outline-none focus:border-accent focus:ring-1 focus:ring-accent placeholder:text-muted"
               />
             </div>
             <div>
@@ -211,7 +210,7 @@ function LoginForm() {
                 onChange={(e) => setPassword(e.target.value)}
                 placeholder="6자 이상"
                 required
-                className="w-full border border-border rounded px-3 py-2 text-sm focus:outline-none focus:border-accent focus:ring-1 focus:ring-accent"
+                className="w-full bg-background text-text-primary border border-border rounded px-3 py-2 text-sm focus:outline-none focus:border-accent focus:ring-1 focus:ring-accent placeholder:text-muted"
               />
             </div>
             <div>
@@ -222,7 +221,7 @@ function LoginForm() {
                 onChange={(e) => setPassword2(e.target.value)}
                 placeholder="비밀번호 재입력"
                 required
-                className="w-full border border-border rounded px-3 py-2 text-sm focus:outline-none focus:border-accent focus:ring-1 focus:ring-accent"
+                className="w-full bg-background text-text-primary border border-border rounded px-3 py-2 text-sm focus:outline-none focus:border-accent focus:ring-1 focus:ring-accent placeholder:text-muted"
               />
             </div>
             <button

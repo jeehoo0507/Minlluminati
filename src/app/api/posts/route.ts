@@ -27,9 +27,23 @@ export async function GET(req: NextRequest) {
       : {}),
   }
 
-  const [posts, total] = await Promise.all([
+  // 고정 글은 항상 맨 위 (페이지네이션 외)
+  const pinnedWhere = { ...where, pinned: true }
+  const regularWhere = { ...where, pinned: false }
+
+  const [pinnedPosts, posts, total] = await Promise.all([
+    page === 1
+      ? prisma.post.findMany({
+          where: pinnedWhere,
+          orderBy: { createdAt: 'desc' },
+          include: {
+            author: { select: { id: true, name: true, image: true, points: true } },
+            _count: { select: { likes: true, comments: true } },
+          },
+        })
+      : Promise.resolve([]),
     prisma.post.findMany({
-      where,
+      where: regularWhere,
       orderBy: { createdAt: 'desc' },
       skip,
       take: limit,
@@ -38,10 +52,10 @@ export async function GET(req: NextRequest) {
         _count: { select: { likes: true, comments: true } },
       },
     }),
-    prisma.post.count({ where }),
+    prisma.post.count({ where: regularWhere }),
   ])
 
-  return NextResponse.json({ posts, total, page, pages: Math.ceil(total / limit) })
+  return NextResponse.json({ pinnedPosts, posts, total, page, pages: Math.ceil(total / limit) })
 }
 
 export async function POST(req: NextRequest) {

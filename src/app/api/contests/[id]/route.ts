@@ -9,7 +9,10 @@ async function finishContest(id: string) {
   const c = await prisma.contest.findUnique({
     where: { id },
     include: {
-      problems: { orderBy: { order: 'asc' } },
+      problems: {
+        orderBy: { order: 'asc' },
+        include: { essaySubmissions: true },
+      },
       contributors: { select: { userId: true } },
     },
   })
@@ -28,7 +31,7 @@ async function finishContest(id: string) {
     for (const cp of c.problems) {
       const agg = await prisma.problem.aggregate({ _max: { problemNumber: true } })
       const nextNum = (agg._max.problemNumber ?? 0) + 1
-      await prisma.problem.create({
+      const newProblem = await prisma.problem.create({
         data: {
           problemNumber: nextNum,
           title: cp.title,
@@ -38,11 +41,40 @@ async function finishContest(id: string) {
           subAnswers: cp.subAnswers,       // 다중 필수 답변 그대로
           imageUrls: cp.imageUrls,
           approvedPts: cp.points,          // 대회 배점 → 풀기 포인트
+          isEssay: cp.isEssay,             // 서술형 여부 그대로 이전
+          allowRetry: cp.allowRetry,       // 재시도 설정 그대로 이전
           status: 'APPROVED',              // 검토된 문제이므로 바로 승인
           authorId: c.organizerId,
           contestId: id,                   // 출처 대회 연결
         },
       })
+
+      // ── 서술형: 대회 중 승인된 답안 → 일반 문제 풀이·정답 이전 ──
+      if (cp.isEssay && cp.essaySubmissions.length > 0) {
+        const approved = cp.essaySubmissions.filter((s) => s.status === 'APPROVED')
+        for (const sub of approved) {
+          // 정답 제출 기록 (이미 있으면 스킵)
+          await prisma.problemSubmission.upsert({
+            where: { problemId_userId: { problemId: newProblem.id, userId: sub.userId } },
+            create: { problemId: newProblem.id, userId: sub.userId, answer: '[essay-approved]', correct: true },
+            update: { correct: true, answer: '[essay-approved]' },
+          })
+          // 풀이 등록 (중복 방지: 같은 problemId+authorId 없을 때만)
+          const existingSolution = await prisma.problemSolution.findFirst({
+            where: { problemId: newProblem.id, authorId: sub.userId },
+          })
+          if (!existingSolution) {
+            await prisma.problemSolution.create({
+              data: {
+                problemId: newProblem.id,
+                authorId: sub.userId,
+                content: sub.content || '(대회 서술형 답안)',
+                imageUrls: sub.imageUrls,
+              },
+            })
+          }
+        }
+      }
     }
   }
 
@@ -200,16 +232,17 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
     },
   })
 
-  if (data.title || data.description !== undefined || data.rules !== undefined || data.prize1 !== undefined || data.prize2 !== undefined || data.prize3 !== undefined) {
+  if (data.title || data.description !== undefined || data.rules !== undefined || data.durationMin !== undefined || data.prize1 !== undefined || data.prize2 !== undefined || data.prize3 !== undefined) {
     await prisma.contest.update({
       where: { id: params.id },
       data: {
         ...(data.title ? { title: data.title } : {}),
         ...(data.description !== undefined ? { description: data.description } : {}),
         ...(data.rules !== undefined ? { rules: data.rules } : {}),
-        ...(data.prize1 !== undefined ? { prize1: data.prize1 ? Number(data.prize1) : null } : {}),
-        ...(data.prize2 !== undefined ? { prize2: data.prize2 ? Number(data.prize2) : null } : {}),
-        ...(data.prize3 !== undefined ? { prize3: data.prize3 ? Number(data.prize3) : null } : {}),
+        ...(data.durationMin !== undefined ? { durationMin: Number(data.durationMin) } : {}),
+        ...(data.prize1 !== undefined ? { prize1: data.prize1 != null ? Number(data.prize1) : null } : {}),
+        ...(data.prize2 !== undefined ? { prize2: data.prize2 != null ? Number(data.prize2) : null } : {}),
+        ...(data.prize3 !== undefined ? { prize3: data.prize3 != null ? Number(data.prize3) : null } : {}),
       },
     })
   }

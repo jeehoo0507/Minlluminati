@@ -21,7 +21,7 @@ interface UserProfile {
   posts: { id: string; subject: string; pointsAwarded: number; createdAt: string }[]
   subjectCount: Record<string, number>
   streakMap: Record<string, number>
-  pointTimeline: { month: string; points: number }[]
+  pointTimeline: { date: string; points: number }[] // kept for compat, not used directly
   radarData: { label: string; value: number }[]
   solvedProblems: { id: string; problemNumber: number; title: string; subject: string | null }[]
   isRival: boolean
@@ -34,6 +34,10 @@ export default function PublicProfilePage() {
   const [profile, setProfile] = useState<UserProfile | null>(null)
   const [loading, setLoading] = useState(true)
   const [rivalLoading, setRivalLoading] = useState(false)
+  const [streakYear, setStreakYear] = useState(new Date().getFullYear())
+  const [streakData, setStreakData] = useState<{ streakMap: Record<string, number>; streak: number } | null>(null)
+  const [pointYear, setPointYear] = useState(new Date().getFullYear())
+  const [pointData, setPointData] = useState<{ date: string; points: number }[]>([])
 
   async function load() {
     const res = await fetch(`/api/users/${id}`)
@@ -41,7 +45,18 @@ export default function PublicProfilePage() {
     setLoading(false)
   }
 
+  async function loadStreak(userId: string, year: number) {
+    const res = await fetch(`/api/users/${userId}/streak?year=${year}`)
+    if (res.ok) setStreakData(await res.json())
+  }
+
+  async function loadPoints(userId: string, year: number) {
+    const res = await fetch(`/api/users/${userId}/points?year=${year}`)
+    if (res.ok) { const d = await res.json(); setPointData(d.timeline) }
+  }
+
   useEffect(() => { load() }, [id, session])
+  useEffect(() => { if (id) { loadStreak(id, streakYear); loadPoints(id, pointYear) } }, [id])
 
   async function toggleRival() {
     if (!profile) return
@@ -119,12 +134,21 @@ export default function PublicProfilePage() {
         <h2 className="text-sm font-semibold text-text-secondary">활동 분석</h2>
 
         {/* Streak */}
-        <StreakChart streakMap={profile.streakMap} />
+        <StreakChart
+          streakMap={streakData?.streakMap ?? profile.streakMap ?? {}}
+          year={streakYear}
+          streak={streakData?.streak ?? 0}
+          onYearChange={(y) => { setStreakYear(y); loadStreak(id, y) }}
+        />
 
         {/* Point line chart */}
         <div className="border-t border-border pt-4">
           <p className="text-xs text-text-secondary mb-2 font-medium">포인트 변화</p>
-          <PointLineChart data={profile.pointTimeline} />
+          <PointLineChart
+            data={pointData}
+            year={pointYear}
+            onYearChange={(y) => { setPointYear(y); loadPoints(id, y) }}
+          />
         </div>
 
         {/* Solved problems */}

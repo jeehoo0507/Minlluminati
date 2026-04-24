@@ -6,15 +6,20 @@ import { Header } from '@/components/layout/Header'
 import { Toaster } from 'react-hot-toast'
 
 export const metadata: Metadata = {
-  title: 'Min(joon)lluminati — 하루 한 문제',
-  description: '민루미나티 스터디 그룹 문제풀이 플랫폼',
+  title: '양현재+',
+  description: '양현재+ 스터디 그룹 문제풀이 플랫폼',
+  icons: {
+    icon: '/icon.png',
+    apple: '/icon.png',
+  },
+  manifest: '/manifest.json',
 }
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   const theme = cookies().get('theme')?.value ?? 'light'
 
   return (
-    <html lang="ko" className={theme === 'dark' ? 'dark' : ''} suppressHydrationWarning>
+    <html lang="ko" className={theme === 'dark' ? 'dark' : theme === 'dev' ? 'dev' : ''} suppressHydrationWarning>
       <body className="min-h-screen bg-background text-text-primary">
         <Providers>
           <Header />

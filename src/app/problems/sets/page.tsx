@@ -1,17 +1,18 @@
 'use client'
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useSession } from 'next-auth/react'
 import Link from 'next/link'
 import { Avatar } from '@/components/ui/Avatar'
 import { TierBadge } from '@/components/ui/TierBadge'
 import { timeAgo } from '@/lib/utils'
-import { BookOpen, PenLine, ListChecks, ArrowLeft, Lock, Globe } from 'lucide-react'
+import { BookOpen, PenLine, ListChecks, ArrowLeft, Lock, Globe, Camera } from 'lucide-react'
 import toast from 'react-hot-toast'
 
 interface ProblemSet {
   id: string
   title: string
   description: string
+  imageUrl?: string | null
   isPublic: boolean
   authorId: string
   createdAt: string
@@ -27,7 +28,10 @@ export default function ProblemSetsPage() {
   const [newTitle, setNewTitle] = useState('')
   const [newDesc, setNewDesc] = useState('')
   const [newPublic, setNewPublic] = useState(true)
+  const [newImageUrl, setNewImageUrl] = useState<string | null>(null)
+  const [uploading, setUploading] = useState(false)
   const [creating, setCreating] = useState(false)
+  const fileRef = useRef<HTMLInputElement>(null)
 
   async function load() {
     const res = await fetch('/api/problems/sets')
@@ -40,6 +44,22 @@ export default function ProblemSetsPage() {
 
   useEffect(() => { load() }, [])
 
+  async function handleImageUpload(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0]; if (!file) return
+    setUploading(true)
+    try {
+      const fd = new FormData(); fd.append('file', file)
+      const res = await fetch('/api/upload', { method: 'POST', body: fd })
+      if (!res.ok) { toast.error('업로드 실패'); return }
+      const data = await res.json()
+      setNewImageUrl(data.url)
+      toast.success('이미지 업로드 완료')
+    } finally {
+      setUploading(false)
+      if (fileRef.current) fileRef.current.value = ''
+    }
+  }
+
   async function handleCreate(e: React.FormEvent) {
     e.preventDefault()
     if (!newTitle.trim()) return
@@ -48,7 +68,7 @@ export default function ProblemSetsPage() {
       const res = await fetch('/api/problems/sets', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ title: newTitle, description: newDesc, isPublic: newPublic }),
+        body: JSON.stringify({ title: newTitle, description: newDesc, isPublic: newPublic, imageUrl: newImageUrl }),
       })
       if (res.ok) {
         toast.success('문제집이 생성되었습니다')
@@ -56,6 +76,7 @@ export default function ProblemSetsPage() {
         setNewTitle('')
         setNewDesc('')
         setNewPublic(true)
+        setNewImageUrl(null)
         await load()
       } else {
         const err = await res.json()
@@ -94,6 +115,37 @@ export default function ProblemSetsPage() {
           <div className="bg-surface border border-border rounded-2xl p-6 w-full max-w-md space-y-4">
             <h2 className="text-base font-bold text-text-primary">새 문제집 만들기</h2>
             <form onSubmit={handleCreate} className="space-y-4">
+              {/* Cover image */}
+              <div className="space-y-1.5">
+                <label className="text-sm font-medium text-text-primary">커버 이미지</label>
+                <div className="flex items-center gap-3">
+                  <div className="relative w-16 h-16 rounded-xl overflow-hidden bg-accent/10 flex items-center justify-center shrink-0">
+                    {newImageUrl ? (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img src={newImageUrl} alt="cover" className="w-full h-full object-cover" />
+                    ) : (
+                      <BookOpen size={20} className="text-accent" />
+                    )}
+                    <button type="button" onClick={() => fileRef.current?.click()} disabled={uploading}
+                      className="absolute inset-0 bg-black/40 opacity-0 hover:opacity-100 flex items-center justify-center transition-opacity rounded-xl">
+                      <Camera size={16} className="text-white" />
+                    </button>
+                  </div>
+                  <div className="flex flex-col gap-1.5">
+                    <button type="button" onClick={() => fileRef.current?.click()} disabled={uploading}
+                      className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-border text-xs text-text-secondary hover:text-text-primary hover:border-accent transition-colors disabled:opacity-50">
+                      <Camera size={12} /> {uploading ? '업로드 중...' : '이미지 선택'}
+                    </button>
+                    {newImageUrl && (
+                      <button type="button" onClick={() => setNewImageUrl(null)}
+                        className="text-xs text-muted hover:text-red-400 transition-colors">
+                        제거
+                      </button>
+                    )}
+                  </div>
+                  <input ref={fileRef} type="file" accept="image/*" className="hidden" onChange={handleImageUpload} />
+                </div>
+              </div>
               <div className="space-y-1.5">
                 <label className="text-sm font-medium text-text-primary">제목 *</label>
                 <input
@@ -182,8 +234,13 @@ export default function ProblemSetsPage() {
                 href={`/problems/sets/${set.id}`}
                 className="flex items-start gap-4 p-4 bg-surface border border-border rounded-xl hover:border-border-2 hover:bg-surface-2 transition-all"
               >
-                <div className="w-12 h-12 rounded-xl bg-accent/10 flex items-center justify-center shrink-0">
-                  <BookOpen size={20} className="text-accent" />
+                <div className="w-12 h-12 rounded-xl bg-accent/10 flex items-center justify-center shrink-0 overflow-hidden">
+                  {set.imageUrl ? (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img src={set.imageUrl} alt={set.title} className="w-full h-full object-cover" />
+                  ) : (
+                    <BookOpen size={20} className="text-accent" />
+                  )}
                 </div>
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2 mb-1">

@@ -96,15 +96,16 @@ export async function POST(req: NextRequest) {
   const session = await getAuth()
   if (!session?.user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
-  const { title, content, answer, subject, imageUrls, requestedPts, subAnswers } = await req.json()
+  const { title, content, answer, subject, imageUrls, requestedPts, subAnswers, isEssay } = await req.json()
 
   const subAnswerDefs: { label: string; answer: string; extra?: string[] }[] = Array.isArray(subAnswers) ? subAnswers : []
-  const isMultiPart = subAnswerDefs.length > 0
+  const essayMode = Boolean(isEssay)
+  const isMultiPart = !essayMode && subAnswerDefs.length > 0
 
   if (!title?.trim() || !content?.trim()) {
     return NextResponse.json({ error: '제목과 내용은 필수입니다' }, { status: 400 })
   }
-  if (!isMultiPart && !answer?.trim()) {
+  if (!essayMode && !isMultiPart && !answer?.trim()) {
     return NextResponse.json({ error: '정답을 입력해주세요' }, { status: 400 })
   }
   if (isMultiPart && subAnswerDefs.some((s) => !s.answer?.trim())) {
@@ -119,11 +120,12 @@ export async function POST(req: NextRequest) {
       problemNumber: nextNumber,
       title: title.trim(),
       content: content.trim(),
-      answer: isMultiPart ? '[multi-part]' : answer.trim(),
+      answer: essayMode ? '[essay]' : isMultiPart ? '[multi-part]' : answer.trim(),
       subject: subject ?? null,
       imageUrls: JSON.stringify(imageUrls ?? []),
       requestedPts: requestedPts ?? 0,
-      subAnswers: JSON.stringify(subAnswerDefs),
+      subAnswers: JSON.stringify(isMultiPart ? subAnswerDefs : []),
+      isEssay: essayMode,
       authorId: session.user.id,
       status: 'PENDING',
     },

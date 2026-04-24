@@ -10,16 +10,22 @@ import Link from 'next/link'
 import { Avatar } from '@/components/ui/Avatar'
 import { TierBadge } from '@/components/ui/TierBadge'
 import { timeAgo } from '@/lib/utils'
-import { Clock, Users, CheckCircle, Play, Pencil, X, Save, Send, MessageSquare, Plus, ImagePlus, RefreshCw, Ban, UserPlus, Eye, PenLine, Trash2, Download } from 'lucide-react'
+import { Clock, Users, CheckCircle, Play, Pencil, X, Save, Send, MessageSquare, Plus, ImagePlus, RefreshCw, Ban, UserPlus, Eye, PenLine, Trash2, Download, GripVertical, FileText, CheckCheck, XCircle } from 'lucide-react'
 import toast from 'react-hot-toast'
 
 interface SubAnswerDef { label: string; answer: string; extra?: string[] }
-interface Problem { id: string; label: string; title: string; content: string; answer?: string; extraAnswers?: string[]; subAnswers?: SubAnswerDef[]; points: number; imageUrls?: string[]; allowRetry?: boolean }
+interface Problem { id: string; label: string; title: string; content: string; answer?: string; extraAnswers?: string[]; subAnswers?: SubAnswerDef[]; points: number; imageUrls?: string[]; allowRetry?: boolean; isEssay?: boolean }
 interface Contributor { id: string; userId: string; role: string; user: { id: string; name?: string | null; image?: string | null; points: number } }
 interface ChatMsg { id: string; content: string; createdAt: string; author: { id: string; name?: string | null; image?: string | null } }
+interface EssaySub { id: string; content: string; imageUrls: string; status: string; createdAt: string; user: { id: string; name?: string | null; image?: string | null; points: number }; problem: { id: string; label: string; title: string } }
+interface ContestTeamMember { id: string; userId: string; user: { id: string; name?: string | null; image?: string | null; points: number }; joinedAt: string }
+interface ContestTeam { id: string; contestId: string; name: string; description: string; leaderId: string; score: number; members: ContestTeamMember[]; leader: { id: string; name?: string | null; image?: string | null; points: number }; createdAt: string }
+
 interface Contest {
   id: string; title: string; description: string; rules: string; status: string
   startTime: string | null; durationMin: number; organizerId: string
+  prize1?: number | null; prize2?: number | null; prize3?: number | null
+  teamContest?: boolean; teamSize?: number
   organizer: { id: string; name?: string | null; image?: string | null; points: number }
   contributors: Contributor[]
   problems: Problem[]; _count: { participants: number }
@@ -37,7 +43,8 @@ export default function ContestPage() {
   const [submitting, setSubmitting] = useState<string | null>(null)
   const [timeLeft, setTimeLeft] = useState<number | null>(null)
   const [loading, setLoading] = useState(true)
-  const [tab, setTab] = useState<'problems' | 'leaderboard' | 'info' | 'chat'>('problems')
+  const [tab, setTab] = useState<'problems' | 'leaderboard' | 'info' | 'chat' | 'essay'>('problems')
+  const [essayFilterProblem, setEssayFilterProblem] = useState<string>('all')
   const [editingProblem, setEditingProblem] = useState<string | null>(null)
   const [editDraft, setEditDraft] = useState<Partial<Problem>>({})
   const [saving, setSaving] = useState(false)
@@ -47,23 +54,50 @@ export default function ContestPage() {
   const [uploadingProblem, setUploadingProblem] = useState<string | null>(null)
   const [editPreview, setEditPreview] = useState(false)
   const [editingInfo, setEditingInfo] = useState(false)
-  const [infoDraft, setInfoDraft] = useState({ title: '', description: '', rules: '', contribs: [] as { userId: string; query: string; role: 'CONTRIBUTOR' | 'REVIEWER' }[] })
+  const [infoDraft, setInfoDraft] = useState({ title: '', description: '', rules: '', durationMin: 120, prize1: '' as string, prize2: '' as string, prize3: '' as string, contribs: [] as { userId: string; query: string; role: 'CONTRIBUTOR' | 'REVIEWER' }[] })
   const [savingInfo, setSavingInfo] = useState(false)
   const [addingProblem, setAddingProblem] = useState(false)
-  const [newProblem, setNewProblem] = useState({ title: '', content: '', answer: '', extraAnswers: [] as string[], subAnswers: [{ label: '(1)', answer: '', extra: [] as string[] }] as SubAnswerDef[], multiPartMode: false, points: 100, allowRetry: true })
+  const [newProblem, setNewProblem] = useState({ title: '', content: '', answer: '', extraAnswers: [] as string[], subAnswers: [{ label: '(1)', answer: '', extra: [] as string[] }] as SubAnswerDef[], multiPartMode: false, isEssay: false, points: 100, allowRetry: true })
   const [savingNewProblem, setSavingNewProblem] = useState(false)
   const [deletingProblem, setDeletingProblem] = useState<string | null>(null)
   const [newContribQuery, setNewContribQuery] = useState('')
   const [newContribRole, setNewContribRole] = useState<'CONTRIBUTOR' | 'REVIEWER'>('CONTRIBUTOR')
+  // 서술형
+  const [essayInputs, setEssayInputs] = useState<Record<string, string>>({})
+  const [essayImages, setEssayImages] = useState<Record<string, string[]>>({})
+  const [submittingEssay, setSubmittingEssay] = useState<string | null>(null)
+  const [essayReviews, setEssayReviews] = useState<EssaySub[]>([])
+  const [essayReviewLoading, setEssayReviewLoading] = useState(false)
+  const essayFileRef = useRef<HTMLInputElement>(null)
+  const essayUploadPidRef = useRef<string>('')
+  // Team contest
+  const [teams, setTeams] = useState<ContestTeam[]>([])
+  const [showTeamModal, setShowTeamModal] = useState(false)
+  const [teamName, setTeamName] = useState('')
+  const [teamDesc, setTeamDesc] = useState('')
+  const [creatingTeam, setCreatingTeam] = useState(false)
+
+  // 드래그 순서
+  const [dragOverPid, setDragOverPid] = useState<string | null>(null)
+  const dragPidRef = useRef<string | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const editTextareaRef = useRef<HTMLTextAreaElement | null>(null)
   const editFileInputRef = useRef<HTMLInputElement | null>(null)
 
+  const loadTeams = useCallback(async () => {
+    const res = await fetch(`/api/contests/${id}/teams`)
+    if (res.ok) setTeams(await res.json())
+  }, [id])
+
   const load = useCallback(async () => {
     const res = await fetch(`/api/contests/${id}`)
-    if (res.ok) setContest(await res.json())
+    if (res.ok) {
+      const data = await res.json()
+      setContest(data)
+      if (data.teamContest) loadTeams()
+    }
     setLoading(false)
-  }, [id])
+  }, [id, loadTeams])
 
   const loadLeaderboard = useCallback(async () => {
     const res = await fetch(`/api/contests/${id}/leaderboard`)
@@ -98,6 +132,43 @@ export default function ContestPage() {
   async function handleLeave() {
     await fetch(`/api/contests/${id}/join`, { method: 'DELETE' })
     load()
+  }
+
+  async function handleCreateTeam() {
+    if (!teamName.trim()) { toast.error('팀 이름을 입력해주세요'); return }
+    setCreatingTeam(true)
+    try {
+      const res = await fetch(`/api/contests/${id}/teams`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: teamName.trim(), description: teamDesc.trim() }),
+      })
+      if (res.ok) {
+        toast.success('팀이 생성되었습니다')
+        setShowTeamModal(false)
+        setTeamName(''); setTeamDesc('')
+        load()
+      } else toast.error((await res.json()).error ?? '오류')
+    } finally { setCreatingTeam(false) }
+  }
+
+  async function handleJoinTeam(teamId: string) {
+    const res = await fetch(`/api/contests/${id}/teams/${teamId}/join`, { method: 'POST' })
+    if (res.ok) { toast.success('팀에 참가했습니다'); load() }
+    else toast.error((await res.json()).error ?? '오류')
+  }
+
+  async function handleLeaveTeam(teamId: string) {
+    const res = await fetch(`/api/contests/${id}/teams/${teamId}/leave`, { method: 'POST' })
+    if (res.ok) { toast.success('팀을 탈퇴했습니다'); load() }
+    else toast.error((await res.json()).error ?? '오류')
+  }
+
+  async function handleDisbandTeam(teamId: string) {
+    if (!confirm('팀을 해산하시겠습니까?')) return
+    const res = await fetch(`/api/contests/${id}/teams/${teamId}`, { method: 'DELETE' })
+    if (res.ok) { toast.success('팀이 해산되었습니다'); load() }
+    else toast.error((await res.json()).error ?? '오류')
   }
 
   async function handleStart() {
@@ -135,6 +206,62 @@ export default function ContestPage() {
     } finally { setSubmitting(null) }
   }
 
+  async function handleEssaySubmit(problemId: string) {
+    const content = essayInputs[problemId] ?? ''
+    const images = essayImages[problemId] ?? []
+    if (!content.trim() && images.length === 0) { toast.error('답안 내용 또는 이미지를 첨부하세요'); return }
+    setSubmittingEssay(problemId)
+    try {
+      const res = await fetch(`/api/contests/${id}/essay`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ problemId, content, imageUrls: images }),
+      })
+      if (res.ok) {
+        toast.success('서술형 답안이 제출되었습니다')
+        setEssayInputs((p) => ({ ...p, [problemId]: '' }))
+        setEssayImages((p) => ({ ...p, [problemId]: [] }))
+        setContest((c) => c ? { ...c, mySubmissions: { ...c.mySubmissions, [problemId]: false } } : c)
+      } else { toast.error((await res.json()).error ?? '제출 실패') }
+    } finally { setSubmittingEssay(null) }
+  }
+
+  async function handleEssayImageUpload(problemId: string, file: File) {
+    const fd = new FormData(); fd.append('file', file)
+    const res = await fetch('/api/upload', { method: 'POST', body: fd })
+    if (!res.ok) { toast.error('업로드 실패'); return }
+    const { url } = await res.json()
+    setEssayImages((p) => ({ ...p, [problemId]: [...(p[problemId] ?? []), url] }))
+  }
+
+  async function loadEssayReviews() {
+    setEssayReviewLoading(true)
+    try {
+      const res = await fetch(`/api/contests/${id}/essay`)
+      if (res.ok) { const d = await res.json(); setEssayReviews(d.submissions) }
+    } finally { setEssayReviewLoading(false) }
+  }
+
+  async function handleEssayReview(submissionId: string, status: 'APPROVED' | 'REJECTED') {
+    const res = await fetch(`/api/contests/${id}/essay`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ submissionId, status }),
+    })
+    if (res.ok) { toast.success(status === 'APPROVED' ? '승인되었습니다' : '반려되었습니다'); await loadEssayReviews() }
+    else toast.error('처리 실패')
+  }
+
+  async function handleReorder(orderedIds: string[]) {
+    const res = await fetch(`/api/contests/${id}/problems`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ orderedIds }),
+    })
+    if (res.ok) { load() }
+    else toast.error('순서 변경 실패')
+  }
+
   if (loading) return <div className="max-w-4xl mx-auto px-4 py-8"><div className="h-64 bg-surface border border-border rounded-xl animate-pulse" /></div>
   if (!contest) return <div className="max-w-4xl mx-auto px-4 py-16 text-center text-text-secondary">대회를 찾을 수 없습니다</div>
 
@@ -158,6 +285,10 @@ export default function ContestPage() {
           title: infoDraft.title,
           description: infoDraft.description,
           rules: infoDraft.rules,
+          durationMin: infoDraft.durationMin,
+          prize1: infoDraft.prize1 !== '' ? Number(infoDraft.prize1) : null,
+          prize2: infoDraft.prize2 !== '' ? Number(infoDraft.prize2) : null,
+          prize3: infoDraft.prize3 !== '' ? Number(infoDraft.prize3) : null,
           contributors: infoDraft.contribs,
         }),
       })
@@ -175,19 +306,22 @@ export default function ContestPage() {
     if (!newProblem.title.trim() || !newProblem.content.trim()) {
       toast.error('제목과 내용을 모두 입력해주세요'); return
     }
-    if (newProblem.multiPartMode) {
-      if (newProblem.subAnswers.length === 0 || newProblem.subAnswers.some((s) => !s.answer.trim())) {
-        toast.error('모든 답변 슬롯에 정답을 입력해주세요'); return
+    if (!newProblem.isEssay) {
+      if (newProblem.multiPartMode) {
+        if (newProblem.subAnswers.length === 0 || newProblem.subAnswers.some((s) => !s.answer.trim())) {
+          toast.error('모든 답변 슬롯에 정답을 입력해주세요'); return
+        }
+      } else if (!newProblem.answer.trim()) {
+        toast.error('정답을 입력해주세요'); return
       }
-    } else if (!newProblem.answer.trim()) {
-      toast.error('정답을 입력해주세요'); return
     }
     setSavingNewProblem(true)
     try {
       const body = {
         ...newProblem,
-        answer: newProblem.multiPartMode ? '[multi-part]' : newProblem.answer,
-        subAnswers: newProblem.multiPartMode ? newProblem.subAnswers : [],
+        answer: newProblem.isEssay ? '[essay]' : (newProblem.multiPartMode ? '[multi-part]' : newProblem.answer),
+        subAnswers: newProblem.multiPartMode && !newProblem.isEssay ? newProblem.subAnswers : [],
+        isEssay: newProblem.isEssay,
       }
       const res = await fetch(`/api/contests/${id}/problems`, {
         method: 'POST',
@@ -196,7 +330,7 @@ export default function ContestPage() {
       })
       if (!res.ok) { toast.error((await res.json()).error ?? '오류'); return }
       toast.success('문제가 추가되었습니다')
-      setNewProblem({ title: '', content: '', answer: '', extraAnswers: [], subAnswers: [{ label: '(1)', answer: '', extra: [] }], multiPartMode: false, points: 100, allowRetry: true })
+      setNewProblem({ title: '', content: '', answer: '', extraAnswers: [], subAnswers: [{ label: '(1)', answer: '', extra: [] }], multiPartMode: false, isEssay: false, points: 100, allowRetry: true })
       setAddingProblem(false)
       load()
     } finally { setSavingNewProblem(false) }
@@ -324,6 +458,37 @@ export default function ContestPage() {
                 className="w-full bg-background border border-border rounded-lg px-3 py-2 text-sm text-text-primary focus:outline-none focus:border-accent resize-none" />
             </div>
             <div>
+              <label className="text-xs text-muted mb-1 block">대회 시간 (분)</label>
+              <input
+                type="number" min={1} max={1440}
+                value={infoDraft.durationMin}
+                onChange={(e) => setInfoDraft((d) => ({ ...d, durationMin: parseInt(e.target.value) || 120 }))}
+                className="w-32 bg-background border border-border rounded-lg px-3 py-1.5 text-sm text-text-primary focus:outline-none focus:border-accent"
+              />
+            </div>
+            <div>
+              <label className="text-xs text-muted mb-2 block">우승 상금 (포인트)</label>
+              <div className="flex items-center gap-2 flex-wrap">
+                {[
+                  { rank: '🥇 1등', key: 'prize1' as const },
+                  { rank: '🥈 2등', key: 'prize2' as const },
+                  { rank: '🥉 3등', key: 'prize3' as const },
+                ].map(({ rank, key }) => (
+                  <div key={key} className="flex items-center gap-1.5">
+                    <span className="text-xs text-text-secondary w-14">{rank}</span>
+                    <input
+                      type="number" min={0}
+                      value={infoDraft[key]}
+                      onChange={(e) => setInfoDraft((d) => ({ ...d, [key]: e.target.value }))}
+                      placeholder="미지급"
+                      className="w-28 bg-background border border-border rounded-lg px-2 py-1.5 text-sm text-text-primary focus:outline-none focus:border-accent"
+                    />
+                    <span className="text-xs text-muted">pt</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+            <div>
               <label className="text-xs text-muted mb-2 block">출제자 / 검토자</label>
               <div className="flex flex-wrap gap-2 mb-2">
                 {infoDraft.contribs.map((c, i) => (
@@ -398,6 +563,10 @@ export default function ContestPage() {
                         title: contest.title,
                         description: contest.description ?? '',
                         rules: contest.rules ?? '',
+                        durationMin: contest.durationMin,
+                        prize1: contest.prize1 != null ? String(contest.prize1) : '',
+                        prize2: contest.prize2 != null ? String(contest.prize2) : '',
+                        prize3: contest.prize3 != null ? String(contest.prize3) : '',
                         contribs: contest.contributors.map((c) => ({ userId: c.userId, query: c.user.name ?? c.userId, role: c.role as 'CONTRIBUTOR' | 'REVIEWER' })),
                       })
                       setEditingInfo(true)
@@ -445,16 +614,31 @@ export default function ContestPage() {
             </button>
           )}
           {['APPROVED', 'ONGOING'].includes(contest.status) && session?.user && !isOrganizer && (
-            isParticipant ? (
-              <button onClick={handleLeave}
-                className="px-4 py-2 rounded-lg border border-border text-sm text-text-secondary hover:text-text-primary transition-colors">
-                참가 취소
-              </button>
-            ) : (
-              <button onClick={handleJoin}
-                className="px-4 py-2 rounded-lg bg-accent text-white text-sm font-semibold hover:bg-accent-dim transition-colors">
-                참가하기
-              </button>
+            contest.teamContest ? (() => {
+              const myTeam = teams.find((t) => t.members.some((m) => m.userId === session.user!.id))
+              return myTeam ? (
+                <button onClick={() => handleLeaveTeam(myTeam.id)}
+                  className="px-4 py-2 rounded-lg border border-border text-sm text-text-secondary hover:text-text-primary transition-colors">
+                  팀 탈퇴
+                </button>
+              ) : (
+                <button onClick={() => setShowTeamModal(true)}
+                  className="px-4 py-2 rounded-lg bg-accent text-white text-sm font-semibold hover:bg-accent-dim transition-colors">
+                  팀 만들기
+                </button>
+              )
+            })() : (
+              isParticipant ? (
+                <button onClick={handleLeave}
+                  className="px-4 py-2 rounded-lg border border-border text-sm text-text-secondary hover:text-text-primary transition-colors">
+                  참가 취소
+                </button>
+              ) : (
+                <button onClick={handleJoin}
+                  className="px-4 py-2 rounded-lg bg-accent text-white text-sm font-semibold hover:bg-accent-dim transition-colors">
+                  참가하기
+                </button>
+              )
             )
           )}
         </div>
@@ -463,7 +647,7 @@ export default function ContestPage() {
       {/* Tabs */}
       <div className="flex gap-1 p-1 bg-surface rounded-xl border border-border w-fit flex-wrap">
         {(['problems', 'leaderboard', 'info'] as const).map((t) => (
-          <button key={t} onClick={() => { setTab(t); if (t === 'leaderboard') loadLeaderboard() }}
+          <button key={t} onClick={() => { setTab(t); if (t === 'leaderboard') { loadLeaderboard(); if (contest.teamContest) loadTeams() } }}
             className={`px-4 py-1.5 rounded-lg text-sm font-medium transition-colors ${tab === t ? 'bg-accent text-white' : 'text-text-secondary hover:text-text-primary'}`}>
             {t === 'problems' ? '문제' : t === 'leaderboard' ? '순위표' : '정보'}
           </button>
@@ -472,6 +656,12 @@ export default function ContestPage() {
           <button onClick={() => { setTab('chat'); loadChat() }}
             className={`flex items-center gap-1 px-4 py-1.5 rounded-lg text-sm font-medium transition-colors ${tab === 'chat' ? 'bg-accent text-white' : 'text-text-secondary hover:text-text-primary'}`}>
             <MessageSquare size={13} /> 사전 채팅
+          </button>
+        )}
+        {(isOrganizer || isAdmin || isContributor) && (
+          <button onClick={() => { setTab('essay'); loadEssayReviews() }}
+            className={`flex items-center gap-1 px-4 py-1.5 rounded-lg text-sm font-medium transition-colors ${tab === 'essay' ? 'bg-accent text-white' : 'text-text-secondary hover:text-text-primary'}`}>
+            <FileText size={13} /> 서술형 검토
           </button>
         )}
       </div>
@@ -487,10 +677,32 @@ export default function ContestPage() {
           {(contest.status === 'ONGOING' || contest.status === 'ENDED' || isOrganizer || isAdmin || isContributor) && contest.problems.map((problem) => {
             const solved = contest.mySubmissions?.[problem.id]
             const isEditing = editingProblem === problem.id
+            const isDragOver = dragOverPid === problem.id
             return (
-              <div key={problem.id} className={`bg-surface border rounded-2xl p-5 space-y-4 ${solved ? 'border-green-300' : 'border-border'}`}>
+              <div
+                key={problem.id}
+                className={`bg-surface border rounded-2xl p-5 space-y-4 transition-all ${solved ? 'border-green-300' : 'border-border'} ${isDragOver ? 'ring-2 ring-accent/40 border-accent/40' : ''}`}
+                draggable={canEditProblems}
+                onDragStart={() => { dragPidRef.current = problem.id }}
+                onDragOver={(e) => { if (!canEditProblems) return; e.preventDefault(); setDragOverPid(problem.id) }}
+                onDragLeave={() => setDragOverPid(null)}
+                onDrop={() => {
+                  setDragOverPid(null)
+                  const from = dragPidRef.current
+                  if (!from || from === problem.id) return
+                  const ids = contest.problems.map((p) => p.id)
+                  const fromIdx = ids.indexOf(from)
+                  const toIdx = ids.indexOf(problem.id)
+                  if (fromIdx === -1 || toIdx === -1) return
+                  const newIds = [...ids]
+                  newIds.splice(fromIdx, 1)
+                  newIds.splice(toIdx, 0, from)
+                  handleReorder(newIds)
+                }}
+              >
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-3">
+                    {canEditProblems && <GripVertical size={14} className="text-muted cursor-grab shrink-0" />}
                     <span className="text-lg font-bold text-accent w-8">{problem.label}</span>
                     <div>
                       <h3 className="font-semibold text-text-primary">{problem.title}</h3>
@@ -559,20 +771,32 @@ export default function ContestPage() {
                       )}
                     </div>
                     <div className="space-y-2">
-                      {/* 정답 모드 토글 */}
-                      <div className="flex items-center gap-3">
-                        <label className="text-xs text-muted">정답</label>
-                        <button type="button"
-                          onClick={() => setEditDraft((d) => ({
-                            ...d,
-                            subAnswers: (d.subAnswers?.length ?? 0) > 0 ? [] : [{ label: '(1)', answer: '', extra: [] }],
-                            answer: (d.subAnswers?.length ?? 0) > 0 ? (d.answer === '[multi-part]' ? '' : d.answer) : '[multi-part]',
-                          }))}
-                          className={`flex items-center gap-1 px-2 py-1 rounded text-xs font-medium border transition-colors ${(editDraft.subAnswers?.length ?? 0) > 0 ? 'bg-accent/10 text-accent border-accent/30' : 'text-text-secondary border-border hover:border-accent/30 hover:text-accent'}`}>
-                          {(editDraft.subAnswers?.length ?? 0) > 0 ? '다중 필수 답변' : '단일 답변'}
-                        </button>
+                      {/* 정답 모드 선택 */}
+                      <div className="space-y-1.5">
+                        <label className="text-xs text-muted block">답변 유형</label>
+                        <div className="flex gap-1.5 flex-wrap">
+                          <button type="button"
+                            onClick={() => setEditDraft((d) => ({ ...d, subAnswers: [], answer: d.answer === '[multi-part]' || d.answer === '[essay]' ? '' : d.answer, isEssay: false }))}
+                            className={`px-3 py-1.5 rounded-lg text-xs font-medium border transition-colors ${(editDraft.subAnswers?.length ?? 0) === 0 && !editDraft.isEssay ? 'bg-accent text-white border-accent' : 'text-text-secondary border-border hover:border-accent/50 hover:text-text-primary'}`}>
+                            단일 답변
+                          </button>
+                          <button type="button"
+                            onClick={() => setEditDraft((d) => ({ ...d, subAnswers: (d.subAnswers?.length ?? 0) > 0 ? d.subAnswers : [{ label: '(1)', answer: '', extra: [] }], answer: '[multi-part]', isEssay: false }))}
+                            className={`px-3 py-1.5 rounded-lg text-xs font-medium border transition-colors ${(editDraft.subAnswers?.length ?? 0) > 0 && !editDraft.isEssay ? 'bg-accent text-white border-accent' : 'text-text-secondary border-border hover:border-accent/50 hover:text-text-primary'}`}>
+                            다중 필수 답변
+                          </button>
+                          <button type="button"
+                            onClick={() => setEditDraft((d) => ({ ...d, isEssay: true, subAnswers: [], answer: '[essay]' }))}
+                            className={`flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-medium border transition-colors ${editDraft.isEssay ? 'bg-accent text-white border-accent' : 'text-text-secondary border-border hover:border-accent/50 hover:text-text-primary'}`}>
+                            <FileText size={11} /> 서술형
+                          </button>
+                        </div>
                       </div>
-                      {(editDraft.subAnswers?.length ?? 0) === 0 ? (
+                      {editDraft.isEssay ? (
+                        <div className="p-3 bg-surface-2 border border-border rounded-xl text-xs text-text-secondary">
+                          서술형 문제입니다. 참가자가 글·이미지로 답안을 제출하면 검토자가 승인/반려합니다.
+                        </div>
+                      ) : (editDraft.subAnswers?.length ?? 0) === 0 ? (
                         <div className="space-y-2">
                           <input value={editDraft.answer ?? ''} onChange={(e) => setEditDraft((d) => ({ ...d, answer: e.target.value }))}
                             placeholder="정답 (대소문자·공백 무시)"
@@ -697,14 +921,16 @@ export default function ContestPage() {
                     )}
                     {(isOrganizer || isAdmin || isContributor) && (
                       <div className="text-xs text-muted">
-                        {problem.subAnswers && problem.subAnswers.length > 0 ? (
+                        {problem.isEssay ? (
+                          <span className="flex items-center gap-1 text-violet-500"><FileText size={11} /> 서술형 문제 — 서술형 검토 탭에서 답안 확인</span>
+                        ) : problem.subAnswers && problem.subAnswers.length > 0 ? (
                           <div className="space-y-0.5">
                             <span className="font-medium">정답:</span>
                             {problem.subAnswers.map((sub, si) => (
                               <p key={si}><span className="font-medium">{sub.label}:</span> <span className="font-mono text-accent">{sub.answer}</span>{sub.extra && sub.extra.length > 0 && <span className="ml-1 text-muted">({sub.extra.join(', ')})</span>}</p>
                             ))}
                           </div>
-                        ) : problem.answer && problem.answer !== '[multi-part]' ? (
+                        ) : problem.answer && !['[multi-part]', '[essay]'].includes(problem.answer) ? (
                           <p>정답: <span className="font-mono text-accent">{problem.answer}</span>
                             {problem.extraAnswers && problem.extraAnswers.length > 0 && <span className="ml-1">, {problem.extraAnswers.join(', ')}</span>}
                           </p>
@@ -713,7 +939,7 @@ export default function ContestPage() {
                     )}
                   </div>
                 )}
-                {contest.status === 'ONGOING' && isParticipant && !solved && !isEditing && (() => {
+                {contest.status === 'ONGOING' && isParticipant && !solved && !isEditing && !problem.isEssay && (() => {
                   const subDefs = problem.subAnswers ?? []
                   const isMultiPart = subDefs.length > 0
                   return (
@@ -761,7 +987,48 @@ export default function ContestPage() {
                     </div>
                   )
                 })()}
-                {solved && <div className="flex items-center gap-1 text-green-600 text-sm"><CheckCircle size={14} /> 정답!</div>}
+                {/* 서술형 제출 UI */}
+                {contest.status === 'ONGOING' && isParticipant && problem.isEssay && !isEditing && (() => {
+                  const myEssay = essayInputs[problem.id] ?? ''
+                  const myImgs = essayImages[problem.id] ?? []
+                  const alreadySubmitted = contest.mySubmissions?.[problem.id] !== undefined
+                  return (
+                    <div className="pt-2 border-t border-border space-y-2">
+                      <p className="text-xs text-muted font-medium">서술형 답안 제출</p>
+                      <textarea
+                        value={myEssay}
+                        onChange={(e) => setEssayInputs((p) => ({ ...p, [problem.id]: e.target.value }))}
+                        placeholder="답안을 작성하세요 (글 + 이미지 모두 가능)"
+                        rows={4}
+                        className="w-full bg-background border border-border rounded-lg px-3 py-2 text-sm text-text-primary focus:outline-none focus:border-accent resize-y"
+                      />
+                      {myImgs.length > 0 && (
+                        <div className="flex flex-wrap gap-2">
+                          {myImgs.map((url, i) => (
+                            <div key={url} className="relative group">
+                              {/* eslint-disable-next-line @next/next/no-img-element */}
+                              <img src={url} alt="" className="w-16 h-16 object-cover rounded-lg border border-border" />
+                              <button type="button" onClick={() => setEssayImages((p) => ({ ...p, [problem.id]: p[problem.id].filter((_, k) => k !== i) }))}
+                                className="absolute -top-1 -right-1 w-4 h-4 bg-red-500 text-white rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"><X size={8} /></button>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                      <div className="flex items-center gap-2">
+                        <button type="button" onClick={() => { essayUploadPidRef.current = problem.id; essayFileRef.current?.click() }}
+                          className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg border border-border text-xs text-text-secondary hover:text-text-primary transition-colors">
+                          <ImagePlus size={12} /> 이미지 첨부
+                        </button>
+                        <button onClick={() => handleEssaySubmit(problem.id)} disabled={submittingEssay === problem.id}
+                          className="flex items-center gap-1.5 px-4 py-1.5 rounded-lg bg-accent text-white text-sm font-semibold hover:bg-accent-dim transition-colors disabled:opacity-50">
+                          <Send size={13} /> {submittingEssay === problem.id ? '제출 중...' : alreadySubmitted ? '재제출' : '제출'}
+                        </button>
+                      </div>
+                      {alreadySubmitted && <p className="text-xs text-amber-500">제출됨 — 검토 대기 중</p>}
+                    </div>
+                  )
+                })()}
+                {solved && !problem.isEssay && <div className="flex items-center gap-1 text-green-600 text-sm"><CheckCircle size={14} /> 정답!</div>}
               </div>
             )
           })}
@@ -794,15 +1061,31 @@ export default function ContestPage() {
                   className="w-full bg-background border border-border rounded-lg px-3 py-2 text-sm text-text-primary focus:outline-none focus:border-accent resize-y font-mono" />
               </div>
               <div className="space-y-2">
-                <div className="flex items-center gap-3">
-                  <label className="text-xs text-muted">정답</label>
-                  <button type="button"
-                    onClick={() => setNewProblem((d) => ({ ...d, multiPartMode: !d.multiPartMode }))}
-                    className={`flex items-center gap-1 px-2 py-1 rounded text-xs font-medium border transition-colors ${newProblem.multiPartMode ? 'bg-accent/10 text-accent border-accent/30' : 'text-text-secondary border-border hover:border-accent/30 hover:text-accent'}`}>
-                    {newProblem.multiPartMode ? '다중 필수 답변' : '단일 답변'}
-                  </button>
+                <div className="space-y-1.5">
+                  <label className="text-xs text-muted block">답변 유형</label>
+                  <div className="flex gap-1.5 flex-wrap">
+                    <button type="button"
+                      onClick={() => setNewProblem((d) => ({ ...d, multiPartMode: false, isEssay: false }))}
+                      className={`px-3 py-1.5 rounded-lg text-xs font-medium border transition-colors ${!newProblem.multiPartMode && !newProblem.isEssay ? 'bg-accent text-white border-accent' : 'text-text-secondary border-border hover:border-accent/50 hover:text-text-primary'}`}>
+                      단일 답변
+                    </button>
+                    <button type="button"
+                      onClick={() => setNewProblem((d) => ({ ...d, multiPartMode: true, isEssay: false }))}
+                      className={`px-3 py-1.5 rounded-lg text-xs font-medium border transition-colors ${newProblem.multiPartMode && !newProblem.isEssay ? 'bg-accent text-white border-accent' : 'text-text-secondary border-border hover:border-accent/50 hover:text-text-primary'}`}>
+                      다중 필수 답변
+                    </button>
+                    <button type="button"
+                      onClick={() => setNewProblem((d) => ({ ...d, isEssay: true, multiPartMode: false }))}
+                      className={`flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-medium border transition-colors ${newProblem.isEssay ? 'bg-accent text-white border-accent' : 'text-text-secondary border-border hover:border-accent/50 hover:text-text-primary'}`}>
+                      <FileText size={11} /> 서술형
+                    </button>
+                  </div>
                 </div>
-                {!newProblem.multiPartMode ? (
+                {newProblem.isEssay ? (
+                  <div className="p-3 bg-violet-50 border border-violet-200 rounded-xl text-xs text-violet-600">
+                    서술형 문제입니다. 참가자가 작성한 답안을 검토자가 직접 승인/반려합니다.
+                  </div>
+                ) : !newProblem.multiPartMode ? (
                   <div className="space-y-2">
                     <input value={newProblem.answer} onChange={(e) => setNewProblem((d) => ({ ...d, answer: e.target.value }))}
                       placeholder="정답 (대소문자·공백 무시)"
@@ -847,10 +1130,12 @@ export default function ContestPage() {
                 )}
               </div>
               <div className="flex items-center justify-between pt-1">
-                <button type="button" onClick={() => setNewProblem((d) => ({ ...d, allowRetry: !d.allowRetry }))}
-                  className={`flex items-center gap-1 px-2 py-1 rounded text-xs transition-colors ${newProblem.allowRetry ? 'text-green-600 bg-green-50 border border-green-200' : 'text-red-500 bg-red-50 border border-red-200'}`}>
-                  {newProblem.allowRetry ? <><RefreshCw size={10} /> 재시도 허용</> : <><Ban size={10} /> 재시도 불가</>}
-                </button>
+                <div className="flex items-center gap-2">
+                  <button type="button" onClick={() => setNewProblem((d) => ({ ...d, allowRetry: !d.allowRetry }))}
+                    className={`flex items-center gap-1 px-2 py-1 rounded text-xs transition-colors ${newProblem.allowRetry ? 'text-green-600 bg-green-50 border border-green-200' : 'text-red-500 bg-red-50 border border-red-200'}`}>
+                    {newProblem.allowRetry ? <><RefreshCw size={10} /> 재시도 허용</> : <><Ban size={10} /> 재시도 불가</>}
+                  </button>
+                </div>
                 <button onClick={addProblem} disabled={savingNewProblem}
                   className="flex items-center gap-1.5 px-4 py-2 rounded-lg bg-accent text-white text-sm font-semibold hover:bg-accent-dim transition-colors disabled:opacity-50">
                   <Plus size={13} /> {savingNewProblem ? '추가 중...' : '문제 추가'}
@@ -867,7 +1152,7 @@ export default function ContestPage() {
             </button>
           )}
 
-          {/* hidden file input for problem image upload */}
+          {/* hidden file inputs */}
           <input ref={fileInputRef} type="file" accept="image/*" className="hidden"
             onChange={(e) => {
               const f = e.target.files?.[0]
@@ -875,55 +1160,196 @@ export default function ContestPage() {
               if (f && pid) uploadProblemImage(pid, f)
               if (e.target) e.target.value = ''
             }} />
+          <input ref={essayFileRef} type="file" accept="image/*" className="hidden"
+            onChange={async (e) => {
+              const f = e.target.files?.[0]
+              if (f && essayUploadPidRef.current) await handleEssayImageUpload(essayUploadPidRef.current, f)
+              if (e.target) e.target.value = ''
+            }} />
+        </div>
+      )}
+
+      {/* Essay review tab */}
+      {tab === 'essay' && (isOrganizer || isAdmin || isContributor) && (
+        <div className="space-y-4">
+          <div className="flex items-center justify-between">
+            <h3 className="text-sm font-semibold text-text-secondary">서술형 답안 검토</h3>
+            <button onClick={loadEssayReviews} disabled={essayReviewLoading}
+              className="text-xs text-accent hover:underline disabled:opacity-50">새로고침</button>
+          </div>
+          {/* Problem filter */}
+          {contest.problems.filter(p => p.isEssay).length > 0 && (
+            <div className="flex items-center gap-2 flex-wrap">
+              <span className="text-xs text-muted">문제별 필터:</span>
+              <button
+                onClick={() => setEssayFilterProblem('all')}
+                className={`px-2.5 py-1 rounded-lg text-xs font-medium border transition-colors ${essayFilterProblem === 'all' ? 'bg-accent text-white border-accent' : 'border-border text-text-secondary hover:border-accent/40'}`}
+              >전체</button>
+              {contest.problems.filter(p => p.isEssay).map(p => (
+                <button
+                  key={p.id}
+                  onClick={() => setEssayFilterProblem(p.id)}
+                  className={`px-2.5 py-1 rounded-lg text-xs font-medium border transition-colors ${essayFilterProblem === p.id ? 'bg-accent text-white border-accent' : 'border-border text-text-secondary hover:border-accent/40'}`}
+                >{p.label}: {p.title}</button>
+              ))}
+            </div>
+          )}
+          {essayReviewLoading ? (
+            <div className="space-y-3">{[1,2,3].map((i) => <div key={i} className="h-20 bg-surface border border-border rounded-xl animate-pulse" />)}</div>
+          ) : essayReviews.length === 0 ? (
+            <div className="text-center py-12 text-text-secondary text-sm">제출된 서술형 답안이 없습니다</div>
+          ) : (
+            <div className="space-y-4">
+              {(essayFilterProblem === 'all' ? essayReviews : essayReviews.filter(s => s.problem.id === essayFilterProblem)).map((sub) => {
+                const images: string[] = (() => { try { return JSON.parse(sub.imageUrls) } catch { return [] } })()
+                return (
+                  <div key={sub.id} className={`bg-surface border rounded-2xl p-5 space-y-3 ${sub.status === 'APPROVED' ? 'border-green-300' : sub.status === 'REJECTED' ? 'border-red-300' : 'border-border'}`}>
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="flex items-center gap-2">
+                        <Avatar name={sub.user.name} image={sub.user.image} size={28} />
+                        <div>
+                          <span className="text-sm font-medium text-text-primary">{sub.user.name}</span>
+                          <TierBadge points={sub.user.points} />
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-2 shrink-0">
+                        <span className="text-xs text-muted">{sub.problem.label}: {sub.problem.title}</span>
+                        <span className={`text-xs px-2 py-0.5 rounded border font-medium ${sub.status === 'APPROVED' ? 'bg-green-50 text-green-700 border-green-200' : sub.status === 'REJECTED' ? 'bg-red-50 text-red-600 border-red-200' : 'bg-amber-50 text-amber-700 border-amber-200'}`}>
+                          {sub.status === 'APPROVED' ? '승인' : sub.status === 'REJECTED' ? '반려' : '검토 중'}
+                        </span>
+                      </div>
+                    </div>
+                    {sub.content && <p className="text-sm text-text-primary whitespace-pre-wrap bg-surface-2 rounded-lg p-3">{sub.content}</p>}
+                    {images.length > 0 && (
+                      <div className="flex flex-wrap gap-2">
+                        {images.map((url) => (
+                          // eslint-disable-next-line @next/next/no-img-element
+                          <img key={url} src={url} alt="" className="max-h-40 rounded-lg border border-border object-contain cursor-pointer hover:opacity-90 transition-opacity" onClick={() => window.open(url, '_blank')} />
+                        ))}
+                      </div>
+                    )}
+                    <div className="flex items-center gap-2 pt-2 border-t border-border">
+                      <button onClick={() => handleEssayReview(sub.id, 'APPROVED')} disabled={sub.status === 'APPROVED'}
+                        className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-green-500 text-white text-xs font-semibold hover:bg-green-600 transition-colors disabled:opacity-40">
+                        <CheckCheck size={12} /> 승인 (+{sub.problem.id ? contest.problems.find(p=>p.id===sub.problem.id)?.points ?? 0 : 0}점)
+                      </button>
+                      <button onClick={() => handleEssayReview(sub.id, 'REJECTED')} disabled={sub.status === 'REJECTED'}
+                        className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-red-500 text-white text-xs font-semibold hover:bg-red-600 transition-colors disabled:opacity-40">
+                        <XCircle size={12} /> 반려
+                      </button>
+                      <span className="text-xs text-muted ml-auto">{timeAgo(sub.createdAt)}</span>
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+          )}
         </div>
       )}
 
       {/* Leaderboard */}
       {tab === 'leaderboard' && (
-        <div className="bg-surface border border-border rounded-2xl overflow-hidden">
-          {leaderboard.length === 0 ? (
-            <div className="text-center py-12 text-text-secondary text-sm">아직 참가자가 없습니다</div>
-          ) : (
-            <table className="w-full text-sm">
-              <thead><tr className="border-b border-border bg-surface-2">
-                <th className="px-4 py-3 text-left text-xs font-semibold text-text-secondary">순위</th>
-                <th className="px-4 py-3 text-left text-xs font-semibold text-text-secondary">참가자</th>
-                <th className="px-4 py-3 text-left text-xs font-semibold text-text-secondary">해결</th>
-                <th className="px-4 py-3 text-right text-xs font-semibold text-text-secondary">점수</th>
-              </tr></thead>
-              <tbody>
-                {leaderboard.map((entry) => (
-                  <tr key={entry.user.id} className={`border-b border-border last:border-0 hover:bg-surface-2 transition-colors ${session?.user?.id === entry.user.id ? 'bg-accent/5' : ''}`}>
-                    <td className="px-4 py-3">
-                      <span className={`w-7 h-7 inline-flex items-center justify-center rounded-lg text-sm font-bold border ${
-                        entry.rank === 1 ? 'text-yellow-700 bg-yellow-50 border-yellow-300' :
-                        entry.rank === 2 ? 'text-gray-600 bg-gray-100 border-gray-300' :
-                        entry.rank === 3 ? 'text-orange-700 bg-orange-50 border-orange-300' :
-                        'text-muted border-transparent'}`}>{entry.rank}</span>
-                    </td>
-                    <td className="px-4 py-3">
-                      <div className="flex items-center gap-2">
-                        <Avatar name={entry.user.name} image={entry.user.image} size={24} />
-                        <span className="font-medium text-text-primary">{entry.user.name ?? '?'}</span>
-                        {session?.user?.id === entry.user.id && <span className="text-xs text-accent">(나)</span>}
+        contest.teamContest ? (
+          <div className="space-y-3">
+            {leaderboard.length === 0 ? (
+              <div className="text-center py-12 text-text-secondary text-sm bg-surface border border-border rounded-2xl">아직 팀이 없습니다</div>
+            ) : (
+              (leaderboard as unknown as { rank: number; teamId: string; teamName: string; score: number; memberCount: number; teamSize: number; isFull: boolean; members: { id: string; name?: string | null; image?: string | null; points: number }[]; solvedProblems: { problem: { label: string } }[] }[]).map((entry) => {
+                const myTeam = teams.find((t) => t.id === entry.teamId)
+                const isMine = myTeam?.members.some((m) => m.userId === session?.user?.id)
+                return (
+                  <div key={entry.teamId} className={`bg-surface border rounded-2xl p-4 space-y-3 ${isMine ? 'border-accent/40' : 'border-border'}`}>
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-3">
+                        <span className={`w-7 h-7 inline-flex items-center justify-center rounded-lg text-sm font-bold border ${
+                          entry.rank === 1 ? 'text-yellow-700 bg-yellow-50 border-yellow-300' :
+                          entry.rank === 2 ? 'text-gray-600 bg-gray-100 border-gray-300' :
+                          entry.rank === 3 ? 'text-orange-700 bg-orange-50 border-orange-300' :
+                          'text-muted border-transparent'}`}>{entry.rank}</span>
+                        <div>
+                          <span className="font-semibold text-text-primary">{entry.teamName}</span>
+                          {isMine && <span className="ml-2 text-xs text-accent">(내 팀)</span>}
+                          <div className="flex items-center gap-1 mt-0.5">
+                            <div className="flex items-center">
+                              {entry.members.slice(0, 5).map((m, mi) => (
+                                <div key={m.id} style={{ marginLeft: mi > 0 ? '-8px' : '0', zIndex: 5 - mi }} className="relative">
+                                  <Avatar name={m.name} image={m.image} size={20} className="ring-2 ring-surface" />
+                                </div>
+                              ))}
+                            </div>
+                            <span className="text-xs text-muted ml-2">{entry.memberCount}/{entry.teamSize}명</span>
+                            {entry.isFull && <span className="text-xs text-green-600 font-medium">완성</span>}
+                          </div>
+                        </div>
                       </div>
-                    </td>
-                    <td className="px-4 py-3">
-                      <div className="flex gap-1 flex-wrap">
-                        {entry.solvedProblems.map((s) => (
-                          <span key={s.problem.label} className="text-xs px-1.5 py-0.5 bg-green-50 border border-green-200 text-green-700 rounded font-medium">
-                            {s.problem.label}
-                          </span>
-                        ))}
+                      <div className="flex items-center gap-3">
+                        <div className="flex gap-1 flex-wrap">
+                          {entry.solvedProblems.map((s) => (
+                            <span key={s.problem.label} className="text-xs px-1.5 py-0.5 bg-green-50 border border-green-200 text-green-700 rounded font-medium">
+                              {s.problem.label}
+                            </span>
+                          ))}
+                        </div>
+                        <span className="font-bold text-accent">{entry.score}점</span>
+                        {!isMine && !entry.isFull && session?.user && ['APPROVED', 'ONGOING'].includes(contest.status) && !teams.some((t) => t.members.some((m) => m.userId === session.user!.id)) && (
+                          <button onClick={() => handleJoinTeam(entry.teamId)}
+                            className="px-3 py-1.5 rounded-lg bg-accent text-white text-xs font-semibold hover:bg-accent-dim transition-colors">
+                            참가
+                          </button>
+                        )}
                       </div>
-                    </td>
-                    <td className="px-4 py-3 text-right font-bold text-accent">{entry.score}점</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          )}
-        </div>
+                    </div>
+                  </div>
+                )
+              })
+            )}
+          </div>
+        ) : (
+          <div className="bg-surface border border-border rounded-2xl overflow-hidden">
+            {leaderboard.length === 0 ? (
+              <div className="text-center py-12 text-text-secondary text-sm">아직 참가자가 없습니다</div>
+            ) : (
+              <table className="w-full text-sm">
+                <thead><tr className="border-b border-border bg-surface-2">
+                  <th className="px-4 py-3 text-left text-xs font-semibold text-text-secondary">순위</th>
+                  <th className="px-4 py-3 text-left text-xs font-semibold text-text-secondary">참가자</th>
+                  <th className="px-4 py-3 text-left text-xs font-semibold text-text-secondary">해결</th>
+                  <th className="px-4 py-3 text-right text-xs font-semibold text-text-secondary">점수</th>
+                </tr></thead>
+                <tbody>
+                  {leaderboard.map((entry) => (
+                    <tr key={entry.user.id} className={`border-b border-border last:border-0 hover:bg-surface-2 transition-colors ${session?.user?.id === entry.user.id ? 'bg-accent/5' : ''}`}>
+                      <td className="px-4 py-3">
+                        <span className={`w-7 h-7 inline-flex items-center justify-center rounded-lg text-sm font-bold border ${
+                          entry.rank === 1 ? 'text-yellow-700 bg-yellow-50 border-yellow-300' :
+                          entry.rank === 2 ? 'text-gray-600 bg-gray-100 border-gray-300' :
+                          entry.rank === 3 ? 'text-orange-700 bg-orange-50 border-orange-300' :
+                          'text-muted border-transparent'}`}>{entry.rank}</span>
+                      </td>
+                      <td className="px-4 py-3">
+                        <div className="flex items-center gap-2">
+                          <Avatar name={entry.user.name} image={entry.user.image} size={24} />
+                          <span className="font-medium text-text-primary">{entry.user.name ?? '?'}</span>
+                          {session?.user?.id === entry.user.id && <span className="text-xs text-accent">(나)</span>}
+                        </div>
+                      </td>
+                      <td className="px-4 py-3">
+                        <div className="flex gap-1 flex-wrap">
+                          {entry.solvedProblems.map((s) => (
+                            <span key={s.problem.label} className="text-xs px-1.5 py-0.5 bg-green-50 border border-green-200 text-green-700 rounded font-medium">
+                              {s.problem.label}
+                            </span>
+                          ))}
+                        </div>
+                      </td>
+                      <td className="px-4 py-3 text-right font-bold text-accent">{entry.score}점</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
+          </div>
+        )
       )}
 
       {/* Chat */}
@@ -969,6 +1395,49 @@ export default function ContestPage() {
         </div>
       )}
 
+      {/* Team list for team contests (shown in problems tab) */}
+      {tab === 'problems' && contest.teamContest && teams.length > 0 && (
+        <div className="bg-surface border border-border rounded-2xl p-4 space-y-3">
+          <h3 className="text-sm font-semibold text-text-secondary">팀 목록 ({teams.length}개)</h3>
+          <div className="space-y-2">
+            {teams.map((team) => {
+              const isMine = team.members.some((m) => m.userId === session?.user?.id)
+              const isFull = team.members.length >= (contest.teamSize ?? 1)
+              const isMyLeader = team.leaderId === session?.user?.id
+              return (
+                <div key={team.id} className={`flex items-center justify-between p-3 rounded-xl border ${isMine ? 'border-accent/40 bg-accent/5' : 'border-border'}`}>
+                  <div className="flex items-center gap-2">
+                    <div className="flex items-center">
+                      {team.members.slice(0, 5).map((m, mi) => (
+                        <div key={m.userId} style={{ marginLeft: mi > 0 ? '-8px' : '0', zIndex: 5 - mi }} className="relative">
+                          <Avatar name={m.user.name} image={m.user.image} size={22} className="ring-2 ring-surface" />
+                        </div>
+                      ))}
+                    </div>
+                    <div className="ml-1">
+                      <span className="text-sm font-medium text-text-primary">{team.name}</span>
+                      {isMine && <span className="ml-1.5 text-xs text-accent">(내 팀)</span>}
+                      <p className="text-xs text-muted">{team.members.length}/{contest.teamSize ?? 1}명{isFull ? ' · 완성' : ''}</p>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    {isMine && (
+                      <button onClick={() => handleLeaveTeam(team.id)} className="text-xs text-text-secondary hover:text-red-400 transition-colors">탈퇴</button>
+                    )}
+                    {isMyLeader && (
+                      <button onClick={() => handleDisbandTeam(team.id)} className="text-xs text-red-400 hover:text-red-600 transition-colors">해산</button>
+                    )}
+                    {!isMine && !isFull && !teams.some((t) => t.members.some((m) => m.userId === session?.user?.id)) && session?.user && ['APPROVED', 'ONGOING'].includes(contest.status) && (
+                      <button onClick={() => handleJoinTeam(team.id)} className="px-3 py-1 rounded-lg bg-accent text-white text-xs font-semibold hover:bg-accent-dim transition-colors">참가</button>
+                    )}
+                  </div>
+                </div>
+              )
+            })}
+          </div>
+        </div>
+      )}
+
       {/* Info */}
       {tab === 'info' && (
         <div className="bg-surface border border-border rounded-2xl p-6 space-y-4">
@@ -978,6 +1447,7 @@ export default function ContestPage() {
               <div><span className="text-muted">제한 시간</span><p className="text-text-primary font-medium">{contest.durationMin}분</p></div>
               <div><span className="text-muted">문제 수</span><p className="text-text-primary font-medium">{contest.problems.length}개</p></div>
               <div><span className="text-muted">참가자</span><p className="text-text-primary font-medium">{contest._count.participants}명</p></div>
+              {contest.teamContest && <div><span className="text-muted">대회 형식</span><p className="text-text-primary font-medium">팀 대회 ({contest.teamSize}인)</p></div>}
               {contest.startTime && <div><span className="text-muted">시작</span><p className="text-text-primary font-medium">{timeAgo(contest.startTime)}</p></div>}
             </div>
           </div>
@@ -988,6 +1458,37 @@ export default function ContestPage() {
             </div>
           )}
         </div>
+      )}
+
+      {/* Team creation modal */}
+      {showTeamModal && (
+        <>
+          <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4" onClick={() => setShowTeamModal(false)}>
+            <div className="bg-surface border border-border rounded-2xl p-6 w-full max-w-sm space-y-4" onClick={(e) => e.stopPropagation()}>
+              <div className="flex items-center justify-between">
+                <h3 className="text-sm font-semibold text-text-primary">팀 만들기</h3>
+                <button onClick={() => setShowTeamModal(false)} className="text-muted hover:text-text-secondary"><X size={16} /></button>
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-text-secondary mb-1.5">팀 이름</label>
+                <input value={teamName} onChange={(e) => setTeamName(e.target.value)} placeholder="팀 이름 입력"
+                  className="w-full bg-background border border-border rounded-lg px-3 py-2 text-sm text-text-primary focus:outline-none focus:border-accent" />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-text-secondary mb-1.5">팀 소개 (선택)</label>
+                <textarea value={teamDesc} onChange={(e) => setTeamDesc(e.target.value)} rows={2} placeholder="팀 소개"
+                  className="w-full bg-background border border-border rounded-lg px-3 py-2 text-sm text-text-primary focus:outline-none focus:border-accent resize-none" />
+              </div>
+              <div className="flex gap-2 pt-1">
+                <button onClick={() => setShowTeamModal(false)} className="flex-1 py-2 rounded-lg border border-border text-sm text-text-secondary hover:bg-surface-2 transition-colors">취소</button>
+                <button onClick={handleCreateTeam} disabled={creatingTeam}
+                  className="flex-1 py-2 rounded-lg bg-accent text-white text-sm font-semibold hover:bg-accent-dim transition-colors disabled:opacity-50">
+                  {creatingTeam ? '생성 중...' : '팀 생성'}
+                </button>
+              </div>
+            </div>
+          </div>
+        </>
       )}
     </div>
   )

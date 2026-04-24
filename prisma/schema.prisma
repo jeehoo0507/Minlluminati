@@ -53,10 +53,19 @@ model User {
   solutionComments SolutionComment[]   @relation("UserSolComments")
   problemSets      ProblemSet[]        @relation("UserProblemSets")
   contestContributions ContestContributor[] @relation("ContestContributors")
+  essaySubmissions     ContestEssaySubmission[]
+  problemEssaySubs     ProblemEssaySubmission[]
 
   // Chat & Notifications
   contestChats  ContestChat[]
   notifications Notification[]
+
+  // Study sessions
+  studySessions StudySession[]
+
+  // Team contests
+  teamMemberships ContestTeamMember[]
+  ledTeams        ContestTeam[]       @relation("TeamLeader")
 
   @@map("users")
 }
@@ -81,6 +90,7 @@ model Post {
   imageUrls     String    @default("[]")
   fileUrls      String    @default("[]")
   pointsAwarded Int       @default(0)
+  pinned        Boolean   @default(false)
   authorId      String
   author        User      @relation(fields: [authorId], references: [id], onDelete: Cascade)
   likes         Like[]
@@ -131,12 +141,15 @@ model Contest {
   prize2        Int?
   prize3        Int?
   prizesAwarded Boolean  @default(false)
+  teamContest   Boolean  @default(false)
+  teamSize      Int      @default(1)
   organizerId   String
   organizer     User     @relation("ContestOrganizer", fields: [organizerId], references: [id])
   problems      ContestProblem[]
   participants  ContestParticipant[]
   contributors  ContestContributor[]
   chats         ContestChat[]
+  teams         ContestTeam[]
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
 
@@ -157,9 +170,27 @@ model ContestProblem {
   imageUrls    String  @default("[]")
   order        Int     @default(0)
   allowRetry   Boolean @default(true)
+  isEssay      Boolean @default(false) // 서술형 답안 여부
   submissions  ContestSubmission[]
+  essaySubmissions ContestEssaySubmission[]
 
   @@map("contest_problems")
+}
+
+model ContestEssaySubmission {
+  id        String   @id @default(cuid())
+  problemId String
+  userId    String
+  content   String   @default("")
+  imageUrls String   @default("[]")
+  status    String   @default("PENDING") // PENDING | APPROVED | REJECTED
+  problem   ContestProblem @relation(fields: [problemId], references: [id], onDelete: Cascade)
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([problemId, userId])
+  @@map("contest_essay_submissions")
 }
 
 model ContestChat {
@@ -309,10 +340,14 @@ model Problem {
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
 
-  author      User                @relation("UserProblems", fields: [authorId], references: [id], onDelete: Cascade)
+  isEssay       Boolean  @default(false)
+  allowRetry    Boolean  @default(true)
+
+  author      User                       @relation("UserProblems", fields: [authorId], references: [id], onDelete: Cascade)
   submissions ProblemSubmission[]
   solutions   ProblemSolution[]
   setItems    ProblemSetItem[]
+  essaySubmissions ProblemEssaySubmission[]
 
   @@map("problems")
 }
@@ -362,6 +397,7 @@ model ProblemSet {
   id          String           @id @default(cuid())
   title       String
   description String           @default("")
+  imageUrl    String?
   isPublic    Boolean          @default(true)
   authorId    String
   groupId     String?
@@ -428,6 +464,61 @@ model PermissionRequest {
   createdAt DateTime @default(now())
 
   @@map("permission_requests")
+}
+
+model ProblemEssaySubmission {
+  id        String   @id @default(cuid())
+  problemId String
+  userId    String
+  content   String   @default("")
+  imageUrls String   @default("[]")
+  status    String   @default("PENDING") // PENDING | APPROVED | REJECTED
+  problem   Problem  @relation(fields: [problemId], references: [id], onDelete: Cascade)
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([problemId, userId])
+  @@map("problem_essay_submissions")
+}
+
+model StudySession {
+  id        String   @id @default(cuid())
+  userId    String
+  duration  Int      // seconds
+  date      String   // YYYY-MM-DD (KST)
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+
+  @@map("study_sessions")
+}
+
+model ContestTeam {
+  id          String   @id @default(cuid())
+  contestId   String
+  name        String
+  description String   @default("")
+  leaderId    String
+  score       Int      @default(0)
+  contest     Contest  @relation(fields: [contestId], references: [id], onDelete: Cascade)
+  leader      User     @relation("TeamLeader", fields: [leaderId], references: [id])
+  members     ContestTeamMember[]
+  createdAt   DateTime @default(now())
+
+  @@unique([contestId, name])
+  @@map("contest_teams")
+}
+
+model ContestTeamMember {
+  id       String      @id @default(cuid())
+  teamId   String
+  userId   String
+  team     ContestTeam @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  user     User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  joinedAt DateTime    @default(now())
+
+  @@unique([teamId, userId])
+  @@map("contest_team_members")
 }
 
 // ───────────────────────────── NextAuth ─────────────────────────────

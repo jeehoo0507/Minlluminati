@@ -2,7 +2,7 @@
 import { useState, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import { useSession } from 'next-auth/react'
-import { Plus, Trash2, UserPlus, X, ImagePlus, RefreshCw, Ban, Eye, Layers } from 'lucide-react'
+import { Plus, Trash2, UserPlus, X, ImagePlus, RefreshCw, Ban, Eye, FileText } from 'lucide-react'
 import ReactMarkdown from 'react-markdown'
 import remarkMath from 'remark-math'
 import rehypeKatex from 'rehype-katex'
@@ -18,6 +18,7 @@ interface Problem {
   extraAnswers: string[]
   subAnswers: SubAnswerDef[]
   multiPartMode: boolean
+  isEssay: boolean
   points: number
   imageUrls: string[]
   allowRetry: boolean
@@ -38,7 +39,7 @@ export default function NewContestPage() {
   const [prize2, setPrize2] = useState('')
   const [prize3, setPrize3] = useState('')
   const [problems, setProblems] = useState<Problem[]>([
-    { title: '', content: '', answer: '', extraAnswers: [], subAnswers: [{ label: '(1)', answer: '', extra: [] }], multiPartMode: false, points: 100, imageUrls: [], allowRetry: true },
+    { title: '', content: '', answer: '', extraAnswers: [], subAnswers: [{ label: '(1)', answer: '', extra: [] }], multiPartMode: false, isEssay: false, points: 100, imageUrls: [], allowRetry: true },
   ])
   const [contributors, setContributors] = useState<Contributor[]>([])
   const [contribQuery, setContribQuery] = useState('')
@@ -46,6 +47,8 @@ export default function NewContestPage() {
   const [loading, setLoading] = useState(false)
   const [uploadingIdx, setUploadingIdx] = useState<number | null>(null)
   const [previewProblem, setPreviewProblem] = useState<number | null>(null)
+  const [isTeamContest, setIsTeamContest] = useState(false)
+  const [teamSize, setTeamSize] = useState(2)
 
   const labels = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'
 
@@ -93,21 +96,24 @@ export default function NewContestPage() {
       if (!p.title.trim() || !p.content.trim()) {
         toast.error('모든 문제의 제목과 내용을 입력해주세요'); return
       }
-      if (p.multiPartMode) {
-        if (p.subAnswers.length === 0 || p.subAnswers.some((s) => !s.answer.trim())) {
-          toast.error('다중 답변 모드: 모든 슬롯에 정답을 입력해주세요'); return
+      if (!p.isEssay) {
+        if (p.multiPartMode) {
+          if (p.subAnswers.length === 0 || p.subAnswers.some((s) => !s.answer.trim())) {
+            toast.error('다중 답변 모드: 모든 슬롯에 정답을 입력해주세요'); return
+          }
+        } else {
+          if (!p.answer.trim()) { toast.error('모든 문제의 정답을 입력해주세요'); return }
         }
-      } else {
-        if (!p.answer.trim()) { toast.error('모든 문제의 정답을 입력해주세요'); return }
       }
     }
     setLoading(true)
     try {
-      // multiPartMode 정보를 API에서 쓰는 형식으로 변환
+      // multiPartMode / isEssay 정보를 API에서 쓰는 형식으로 변환
       const mappedProblems = problems.map((p) => ({
         ...p,
-        answer: p.multiPartMode ? '[multi-part]' : p.answer,
-        subAnswers: p.multiPartMode ? p.subAnswers : [],
+        answer: p.isEssay ? '[essay]' : p.multiPartMode ? '[multi-part]' : p.answer,
+        subAnswers: p.multiPartMode && !p.isEssay ? p.subAnswers : [],
+        isEssay: p.isEssay,
       }))
       const res = await fetch('/api/contests', {
         method: 'POST',
@@ -118,6 +124,8 @@ export default function NewContestPage() {
           prize2: prize2 ? Number(prize2) : 0,
           prize3: prize3 ? Number(prize3) : 0,
           problems: mappedProblems, contributors,
+          teamContest: isTeamContest,
+          teamSize: isTeamContest ? teamSize : 1,
         }),
       })
       if (!res.ok) { toast.error((await res.json()).error ?? '오류 발생'); return }
@@ -181,6 +189,36 @@ export default function NewContestPage() {
           </div>
         </div>
 
+        {/* Team contest settings (admin only) */}
+        {session.user.role === 'ADMIN' && (
+          <div className="space-y-3 p-4 bg-surface-2 border border-border rounded-xl">
+            <label className="block text-xs font-medium text-text-secondary">대회 형식</label>
+            <div className="flex gap-2">
+              <button type="button" onClick={() => setIsTeamContest(false)}
+                className={`px-4 py-2 rounded-lg text-sm font-medium border transition-colors ${!isTeamContest ? 'bg-accent text-white border-accent' : 'text-text-secondary border-border hover:border-accent/40'}`}>
+                일반 대회
+              </button>
+              <button type="button" onClick={() => setIsTeamContest(true)}
+                className={`px-4 py-2 rounded-lg text-sm font-medium border transition-colors ${isTeamContest ? 'bg-accent text-white border-accent' : 'text-text-secondary border-border hover:border-accent/40'}`}>
+                팀 대회
+              </button>
+            </div>
+            {isTeamContest && (
+              <div>
+                <label className="block text-xs font-medium text-text-secondary mb-1.5">팀 인원 (최대 5명)</label>
+                <div className="flex gap-1">
+                  {[2,3,4,5].map((n) => (
+                    <button key={n} type="button" onClick={() => setTeamSize(n)}
+                      className={`w-10 h-10 rounded-lg text-sm font-semibold border transition-colors ${teamSize === n ? 'bg-accent text-white border-accent' : 'text-text-secondary border-border hover:border-accent/40'}`}>
+                      {n}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+
         {/* Contributors */}
         <div>
           <label className="block text-xs font-medium text-text-secondary mb-1.5">출제자 / 검토자 추가 (선택)</label>
@@ -239,7 +277,7 @@ export default function NewContestPage() {
       <div className="space-y-4">
         <div className="flex items-center justify-between">
           <h2 className="text-sm font-semibold text-text-primary">문제 ({problems.length}개)</h2>
-          <button onClick={() => setProblems((p) => [...p, { title: '', content: '', answer: '', extraAnswers: [], subAnswers: [{ label: '(1)', answer: '', extra: [] }], multiPartMode: false, points: 100, imageUrls: [], allowRetry: true }])}
+          <button onClick={() => setProblems((p) => [...p, { title: '', content: '', answer: '', extraAnswers: [], subAnswers: [{ label: '(1)', answer: '', extra: [] }], multiPartMode: false, isEssay: false, points: 100, imageUrls: [], allowRetry: true }])}
             className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg border border-border text-xs text-text-secondary hover:text-text-primary hover:border-border-2 transition-colors">
             <Plus size={12} /> 문제 추가
           </button>
@@ -332,20 +370,39 @@ export default function NewContestPage() {
               </div>
             </div>
 
-            {/* Answer mode toggle + answer inputs */}
+            {/* Answer mode selector + answer inputs */}
             <div className="space-y-2">
-              <div className="flex items-center gap-3">
-                <label className="block text-xs font-medium text-text-secondary">정답</label>
+              <div className="flex items-center gap-2 flex-wrap">
+                <label className="block text-xs font-medium text-text-secondary">정답 유형</label>
                 <button
                   type="button"
-                  onClick={() => updateProblem(i, 'multiPartMode', !p.multiPartMode)}
-                  className={`flex items-center gap-1 px-2 py-1 rounded text-xs font-medium border transition-colors ${p.multiPartMode ? 'bg-accent/10 text-accent border-accent/30' : 'text-text-secondary border-border hover:border-accent/30 hover:text-accent'}`}
+                  onClick={() => { updateProblem(i, 'isEssay', false); updateProblem(i, 'multiPartMode', false) }}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-medium border transition-colors ${!p.multiPartMode && !p.isEssay ? 'bg-accent text-white border-accent' : 'text-text-secondary border-border hover:border-accent/40 hover:text-accent'}`}
                 >
-                  {p.multiPartMode ? '다중 필수 답변' : '단일 답변'}
+                  단일 답변
+                </button>
+                <button
+                  type="button"
+                  onClick={() => { updateProblem(i, 'isEssay', false); updateProblem(i, 'multiPartMode', true) }}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-medium border transition-colors ${p.multiPartMode && !p.isEssay ? 'bg-accent text-white border-accent' : 'text-text-secondary border-border hover:border-accent/40 hover:text-accent'}`}
+                >
+                  다중 필수 답변
+                </button>
+                <button
+                  type="button"
+                  onClick={() => { updateProblem(i, 'isEssay', true); updateProblem(i, 'multiPartMode', false) }}
+                  className={`flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-medium border transition-colors ${p.isEssay ? 'bg-accent text-white border-accent' : 'text-text-secondary border-border hover:border-accent/40 hover:text-accent'}`}
+                >
+                  <FileText size={11} /> 서술형
                 </button>
               </div>
 
-              {!p.multiPartMode ? (
+              {p.isEssay ? (
+                <div className="p-3 bg-accent/5 border border-accent/20 rounded-xl">
+                  <p className="text-xs text-accent font-medium mb-1">📝 서술형 문제</p>
+                  <p className="text-xs text-muted">참가자가 글과 이미지로 답안을 제출합니다. 출제자·검토자가 서술형 탭에서 확인 후 승인/반려합니다.</p>
+                </div>
+              ) : !p.multiPartMode ? (
                 <div className="space-y-2">
                   <input value={p.answer} onChange={(e) => updateProblem(i, 'answer', e.target.value)}
                     placeholder="정답 (대소문자·공백 무시)"

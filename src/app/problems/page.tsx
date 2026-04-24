@@ -1,5 +1,5 @@
 'use client'
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { useSession } from 'next-auth/react'
 import Link from 'next/link'
 import { Avatar } from '@/components/ui/Avatar'
@@ -40,13 +40,27 @@ export default function ProblemsPage() {
   const [search, setSearch] = useState('')
   const [query, setQuery] = useState('')
   const [subject, setSubject] = useState('')
-  const [sort, setSort] = useState('number_desc')
-  const [solvedFilter, setSolvedFilter] = useState<'all' | 'solved' | 'unsolved'>('all')
+  const [sort, setSort] = useState(() => {
+    if (typeof window !== 'undefined') return localStorage.getItem('problems_sort') ?? 'number_desc'
+    return 'number_desc'
+  })
+  const [solvedFilter, setSolvedFilter] = useState<'all' | 'solved' | 'unsolved'>(() => {
+    if (typeof window !== 'undefined') return (localStorage.getItem('problems_solved') as 'all' | 'solved' | 'unsolved') ?? 'all'
+    return 'all'
+  })
   const [authorSearch, setAuthorSearch] = useState('')
   const [authorQuery, setAuthorQuery] = useState('')
   const [loading, setLoading] = useState(false)
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const [activeTab, setActiveTab] = useState<'list' | 'sets'>('list')
+  const isFirstRender = useRef(true)
+
+  // sort/filter 변경 시 localStorage에 저장
+  useEffect(() => {
+    if (isFirstRender.current) { isFirstRender.current = false; return }
+    localStorage.setItem('problems_sort', sort)
+    localStorage.setItem('problems_solved', solvedFilter)
+  }, [sort, solvedFilter])
 
   const load = useCallback(async () => {
     setLoading(true)
