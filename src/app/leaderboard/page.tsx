@@ -3,9 +3,8 @@ import { useState, useEffect } from 'react'
 import Link from 'next/link'
 import { Avatar } from '@/components/ui/Avatar'
 import { TierBadge } from '@/components/ui/TierBadge'
-import { getTier } from '@/lib/scoring'
+import { getTier, TIERS, MASTER_TIER, MASTER_COUNT } from '@/lib/scoring'
 import { useSession } from 'next-auth/react'
-import { TIERS } from '@/lib/scoring'
 import { FileText } from 'lucide-react'
 
 interface LeaderUser {
@@ -47,21 +46,33 @@ export default function LeaderboardPage() {
       </div>
 
       {/* Tier guide */}
-      <div className="grid grid-cols-3 sm:grid-cols-6 gap-2">
-        {TIERS.map((t) => (
-          <div key={t.name} className="text-center p-2 border border-border rounded-lg" style={{ background: t.bg }}>
-            <div className="text-xs font-semibold mt-0.5" style={{ color: t.color }}>{t.name}</div>
-            <div className="text-xs text-muted">{t.max === Infinity ? `${t.min}+` : `${t.min}~${t.max}`}pt</div>
-          </div>
-        ))}
+      <div className="grid grid-cols-3 sm:grid-cols-7 gap-2">
+        {TIERS.map((t) => {
+          const isRuby = t.name === '루비'
+          return (
+            <div key={t.name} className="text-center p-2 border border-border rounded-lg" style={{ background: t.bg }}>
+              <div className="text-xs font-semibold mt-0.5" style={{ color: t.color }}>{t.name}</div>
+              <div className="text-xs text-muted">{t.max === Infinity ? `${t.min}+` : `${t.min}~${t.max}`}pt</div>
+              {isRuby && (
+                <div className="text-[10px] font-semibold mt-0.5" style={{ color: MASTER_TIER.color }}>
+                  top{MASTER_COUNT} → {MASTER_TIER.name}
+                </div>
+              )}
+            </div>
+          )
+        })}
       </div>
 
       {/* My rank */}
-      {myRank > 0 && (
-        <div className="p-3 bg-accent/5 border border-accent/20 rounded-lg text-sm text-center text-accent">
-          내 순위: <strong>{myRank}위</strong> · {session?.user?.points ?? 0}pt · {getTier(session?.user?.points ?? 0).name}
-        </div>
-      )}
+      {myRank > 0 && (() => {
+        const me = users[myRank - 1]
+        const tierName = me?.isMaster ? '마스터' : getTier(session?.user?.points ?? 0).name
+        return (
+          <div className={`p-3 border rounded-lg text-sm text-center ${me?.isMaster ? 'bg-yellow-500/5 border-yellow-500/30 text-yellow-600 dark:text-yellow-400' : 'bg-accent/5 border-accent/20 text-accent'}`}>
+            내 순위: <strong>{myRank}위</strong> · {session?.user?.points ?? 0}pt · {tierName}
+          </div>
+        )
+      })()}
 
       {/* Table */}
       {loading ? (
@@ -80,7 +91,11 @@ export default function LeaderboardPage() {
                 key={user.id}
                 href={`/profile/${user.id}`}
                 className={`flex items-center gap-3 p-3 rounded-xl border transition-colors ${
-                  isMe ? 'border-accent/30 bg-accent/5' : 'border-border bg-surface hover:border-border-2 hover:bg-surface-2'
+                  isMe
+                    ? 'border-accent/30 bg-accent/5'
+                    : user.isMaster
+                    ? 'border-yellow-500/40 bg-yellow-500/5 hover:bg-yellow-500/10'
+                    : 'border-border bg-surface hover:border-border-2 hover:bg-surface-2'
                 }`}
               >
                 {/* Rank */}

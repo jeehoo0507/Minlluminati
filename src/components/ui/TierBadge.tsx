@@ -14,7 +14,7 @@ export function TierBadge({ points, showPoints = false, size = 'sm', isMaster = 
 
   return (
     <span
-      className={`inline-flex items-center gap-1 rounded font-semibold ${sizes[size]}`}
+      className={`inline-flex items-center gap-1 rounded font-semibold whitespace-nowrap shrink-0 ${sizes[size]}`}
       style={{
         backgroundColor: tier.bg,
         color: tier.color,

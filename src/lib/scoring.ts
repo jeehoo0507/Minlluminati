@@ -28,8 +28,8 @@ export const TIERS = [
   { name: '루비',    min: 2000, max: Infinity,    color: '#be123c', bg: '#fff1f2' },
 ] as const
 
-// 상위 123명은 포인트와 무관하게 마스터
-export const MASTER_COUNT = 123
+// 상위 3명은 포인트와 무관하게 마스터 (1등, 2등, 3등)
+export const MASTER_COUNT = 3
 export const MASTER_TIER = { name: '마스터', color: '#f59e0b', bg: '#1e1b4b' } as const
 
 export function getTier(points: number) {

@@ -29,7 +29,7 @@ export const SUBJECTS = {
 
 export type SubjectKey = keyof typeof SUBJECTS
 
-export const PROBLEM_SUBJECTS: SubjectKey[] = ['MATH1', 'MATH2', 'MATH', 'PHYSICS', 'CHEMISTRY', 'CS', 'EARTH']
+export const PROBLEM_SUBJECTS: SubjectKey[] = ['MATH1', 'MATH2', 'MATH', 'PHYSICS', 'CHEMISTRY', 'CS', 'EARTH', 'BIOLOGY']
 
 export const UNITS: Record<string, string[]> = {
   MATH1: [

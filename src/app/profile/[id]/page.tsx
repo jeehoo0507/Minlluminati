@@ -114,7 +114,7 @@ export default function PublicProfilePage() {
               </div>
               {session?.user && !isMe && (
                 <button onClick={toggleRival} disabled={rivalLoading}
-                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-semibold transition-colors ${
+                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-semibold transition-colors whitespace-nowrap shrink-0 ${
                     profile.isRival
                       ? 'border border-border text-text-secondary hover:text-red-400 hover:border-red-300'
                       : 'bg-accent text-white hover:bg-accent-dim'
@@ -124,7 +124,7 @@ export default function PublicProfilePage() {
                 </button>
               )}
               {isMe && (
-                <Link href="/profile" className="px-3 py-1.5 rounded-lg border border-border text-sm text-text-secondary hover:text-text-primary transition-colors">
+                <Link href="/profile" className="px-3 py-1.5 rounded-lg border border-border text-sm text-text-secondary hover:text-text-primary transition-colors whitespace-nowrap shrink-0">
                   프로필 편집
                 </Link>
               )}

@@ -74,7 +74,7 @@ export function Header() {
                 key={href}
                 href={href}
                 className={cn(
-                  'px-3 py-1.5 rounded-lg text-sm font-medium transition-colors',
+                  'px-3 py-1.5 rounded-lg text-sm font-medium transition-colors whitespace-nowrap',
                   pathname.startsWith(href)
                     ? 'text-accent bg-accent/10'
                     : 'text-text-secondary hover:text-text-primary hover:bg-surface-2'
@@ -107,7 +107,7 @@ export function Header() {
                   {bellOpen && (
                     <>
                       <div className="fixed inset-0 z-10" onClick={() => setBellOpen(false)} />
-                      <div className="fixed top-14 right-2 w-80 max-w-[calc(100vw-1rem)] bg-surface border border-border rounded-xl shadow-2xl z-20 overflow-hidden animate-fade-in">
+                      <div className="fixed top-14 right-2 w-80 max-w-[calc(100vw-1rem)] md:absolute md:top-full md:right-0 md:mt-1 md:max-w-none bg-surface border border-border rounded-xl shadow-2xl z-20 overflow-hidden animate-fade-in">
                         <div className="flex items-center justify-between px-3 py-2.5 border-b border-border">
                           <span className="text-sm font-semibold text-text-primary">알림</span>
                           {unread > 0 && <button onClick={markAllRead} className="text-xs text-accent hover:underline">모두 읽음</button>}
@@ -158,7 +158,7 @@ export function Header() {
                   {dropOpen && (
                     <>
                       <div className="fixed inset-0 z-10" onClick={() => setDropOpen(false)} />
-                      <div className="fixed top-14 right-2 w-48 bg-surface border border-border rounded-xl shadow-2xl z-20 py-1 animate-fade-in">
+                      <div className="fixed top-14 right-2 w-48 md:absolute md:top-full md:right-0 md:mt-1 bg-surface border border-border rounded-xl shadow-2xl z-20 py-1 animate-fade-in">
                         <div className="px-3 py-2 border-b border-border">
                           <p className="text-sm font-semibold text-text-primary truncate">{session.user.name}</p>
                           <p className="text-xs text-text-secondary truncate">{session.user.email}</p>

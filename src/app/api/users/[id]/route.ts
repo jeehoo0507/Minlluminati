@@ -121,13 +121,12 @@ export async function GET(_: NextRequest, { params }: { params: { id: string } }
     orderBy: { createdAt: 'asc' },
   })
 
-  // 마스터 여부 (상위 123등)
-  const topUsers = await prisma.user.findMany({
-    select: { id: true },
-    orderBy: { points: 'desc' },
-    take: MASTER_COUNT,
-  })
-  const isMaster = topUsers.some((u) => u.id === userId)
+  // 마스터 여부 (총 유저 수 >= 123일 때 상위 123등)
+  const [topUsers, totalUsers] = await Promise.all([
+    prisma.user.findMany({ select: { id: true }, orderBy: { points: 'desc' }, take: MASTER_COUNT }),
+    prisma.user.count(),
+  ])
+  const isMaster = totalUsers >= MASTER_COUNT && topUsers.some((u) => u.id === userId)
 
   // 최초 루비 달성자
   const firstRubyId = await getFirstRubyUserId()

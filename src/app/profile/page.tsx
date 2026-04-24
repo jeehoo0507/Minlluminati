@@ -185,14 +185,14 @@ export default function ProfilePage() {
         </div>
 
         <button onClick={handleSave} disabled={saving || uploading}
-          className="w-full py-2.5 rounded-lg bg-accent text-white text-sm font-semibold hover:bg-accent-dim transition-colors disabled:opacity-50">
+          className="w-full py-2.5 rounded-lg bg-accent text-white text-sm font-semibold hover:bg-accent-dim transition-colors disabled:opacity-50 whitespace-nowrap">
           {saving ? '저장 중...' : '저장'}
         </button>
 
         {/* Password change */}
         <div className="border-t border-border pt-4">
           <button onClick={() => setShowPwChange(!showPwChange)}
-            className="flex items-center gap-1.5 text-sm text-text-secondary hover:text-text-primary transition-colors">
+            className="flex items-center gap-1.5 text-sm text-text-secondary hover:text-text-primary transition-colors whitespace-nowrap">
             <Lock size={13} /> {showPwChange ? '비밀번호 변경 닫기' : '비밀번호 변경'}
           </button>
           {showPwChange && (
@@ -205,7 +205,7 @@ export default function ProfilePage() {
                 className="w-full bg-surface border border-border rounded-lg px-3 py-2 text-sm text-text-primary focus:outline-none focus:border-accent"
                 onKeyDown={(e) => e.key === 'Enter' && handlePasswordChange()} />
               <button onClick={handlePasswordChange} disabled={pwLoading}
-                className="w-full py-2 rounded-lg bg-surface-2 border border-border text-sm font-semibold text-text-primary hover:bg-surface-2 hover:border-border-2 transition-colors disabled:opacity-50">
+                className="w-full py-2 rounded-lg bg-surface-2 border border-border text-sm font-semibold text-text-primary hover:bg-surface-2 hover:border-border-2 transition-colors disabled:opacity-50 whitespace-nowrap">
                 {pwLoading ? '변경 중...' : '비밀번호 변경'}
               </button>
             </div>
