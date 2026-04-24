@@ -22,6 +22,10 @@ data/
 # uploads (업로드 파일도 gitignore)
 public/uploads/
 
+# local scripts (personal machine only)
+valorant-watchdog.ps1
+restart-server.bat
+
 # misc
 .DS_Store
 *.pem
