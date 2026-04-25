@@ -47,10 +47,6 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
   }
 
-  if (['ONGOING', 'ENDED'].includes(contest.status)) {
-    return NextResponse.json({ error: '대회 시작 후 채팅이 종료됩니다' }, { status: 400 })
-  }
-
   const { content } = await req.json()
   if (!content?.trim()) return NextResponse.json({ error: '내용을 입력하세요' }, { status: 400 })
   if (content.trim().length > 500) return NextResponse.json({ error: '채팅은 500자 이하여야 합니다' }, { status: 400 })

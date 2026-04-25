@@ -57,8 +57,9 @@ model User {
   problemEssaySubs     ProblemEssaySubmission[]
 
   // Chat & Notifications
-  contestChats  ContestChat[]
-  notifications Notification[]
+  contestChats     ContestChat[]
+  contestTeamChats ContestTeamChat[]
+  notifications    Notification[]
 
   // Study sessions
   studySessions StudySession[]
@@ -503,10 +504,23 @@ model ContestTeam {
   contest     Contest  @relation(fields: [contestId], references: [id], onDelete: Cascade)
   leader      User     @relation("TeamLeader", fields: [leaderId], references: [id])
   members     ContestTeamMember[]
+  chats       ContestTeamChat[]
   createdAt   DateTime @default(now())
 
   @@unique([contestId, name])
   @@map("contest_teams")
+}
+
+model ContestTeamChat {
+  id        String      @id @default(cuid())
+  teamId    String
+  authorId  String
+  content   String
+  team      ContestTeam @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  author    User        @relation(fields: [authorId], references: [id], onDelete: Cascade)
+  createdAt DateTime    @default(now())
+
+  @@map("contest_team_chats")
 }
 
 model ContestTeamMember {

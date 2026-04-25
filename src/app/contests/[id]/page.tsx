@@ -51,6 +51,10 @@ export default function ContestPage() {
   const [chats, setChats] = useState<ChatMsg[]>([])
   const [chatMsg, setChatMsg] = useState('')
   const [chatLoading, setChatLoading] = useState(false)
+  const [teamChats, setTeamChats] = useState<ChatMsg[]>([])
+  const [teamChatMsg, setTeamChatMsg] = useState('')
+  const [teamChatLoading, setTeamChatLoading] = useState(false)
+  const [chatSubTab, setChatSubTab] = useState<'global' | 'team'>('global')
   const [uploadingProblem, setUploadingProblem] = useState<string | null>(null)
   const [editPreview, setEditPreview] = useState(false)
   const [editingInfo, setEditingInfo] = useState(false)
@@ -273,7 +277,11 @@ export default function ContestPage() {
   const isParticipant = !!contest.myParticipant
   const canStart = (isOrganizer || isAdmin) && contest.status === 'APPROVED'
   const canEditProblems = (isOrganizer || isAdmin || isContributor) && !['ONGOING', 'ENDED'].includes(contest.status)
-  const canChat = (isOrganizer || isAdmin || isContributor) && !['ONGOING', 'ENDED'].includes(contest.status)
+  const canChat = isOrganizer || isAdmin || isContributor
+  const myTeamForChat = contest.teamContest
+    ? teams.find((t) => t.members.some((m) => m.userId === session?.user?.id) || t.leaderId === session?.user?.id)
+    : undefined
+  const canTeamChat = contest.teamContest && !!myTeamForChat && !!session?.user
 
   async function saveInfo() {
     setSavingInfo(true)
@@ -378,6 +386,24 @@ export default function ContestPage() {
       if (res.ok) { setChatMsg(''); loadChat() }
       else toast.error((await res.json()).error ?? '오류')
     } finally { setChatLoading(false) }
+  }
+
+  async function loadTeamChat(teamId: string) {
+    const res = await fetch(`/api/contests/${id}/teams/${teamId}/chat`)
+    if (res.ok) setTeamChats(await res.json())
+  }
+
+  async function sendTeamChat(teamId: string) {
+    if (!teamChatMsg.trim()) return
+    setTeamChatLoading(true)
+    try {
+      const res = await fetch(`/api/contests/${id}/teams/${teamId}/chat`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ content: teamChatMsg.trim() }),
+      })
+      if (res.ok) { setTeamChatMsg(''); loadTeamChat(teamId) }
+      else toast.error((await res.json()).error ?? '오류')
+    } finally { setTeamChatLoading(false) }
   }
 
   function insertEditImageAtCursor(url: string) {
@@ -652,10 +678,15 @@ export default function ContestPage() {
             {t === 'problems' ? '문제' : t === 'leaderboard' ? '순위표' : '정보'}
           </button>
         ))}
-        {canChat && (
-          <button onClick={() => { setTab('chat'); loadChat() }}
+        {(canChat || canTeamChat) && (
+          <button onClick={() => {
+            setTab('chat')
+            if (canChat) loadChat()
+            if (canTeamChat && myTeamForChat) { setChatSubTab('team'); loadTeamChat(myTeamForChat.id) }
+            else setChatSubTab('global')
+          }}
             className={`flex items-center gap-1 px-4 py-1.5 rounded-lg text-sm font-medium transition-colors ${tab === 'chat' ? 'bg-accent text-white' : 'text-text-secondary hover:text-text-primary'}`}>
-            <MessageSquare size={13} /> 사전 채팅
+            <MessageSquare size={13} /> 채팅
           </button>
         )}
         {(isOrganizer || isAdmin || isContributor) && (
@@ -1355,43 +1386,84 @@ export default function ContestPage() {
       {/* Chat */}
       {tab === 'chat' && (
         <div className="bg-surface border border-border rounded-2xl overflow-hidden flex flex-col" style={{ minHeight: '400px' }}>
-          <div className="px-4 py-3 border-b border-border text-sm font-semibold text-text-primary flex items-center gap-2">
-            <MessageSquare size={14} className="text-accent" /> 사전 토론 채팅
-            <span className="text-xs text-muted font-normal ml-1">대회 시작 시 삭제됩니다</span>
-          </div>
-          <div className="flex-1 overflow-y-auto p-4 space-y-3" style={{ maxHeight: '400px' }}>
-            {chats.length === 0 ? (
-              <div className="text-center py-8 text-text-secondary text-sm">아직 메시지가 없습니다</div>
-            ) : (
-              chats.map((c) => (
-                <div key={c.id} className={`flex gap-2 ${c.author.id === session?.user?.id ? 'flex-row-reverse' : ''}`}>
-                  <Avatar name={c.author.name} image={c.author.image} size={28} />
-                  <div className={`max-w-xs ${c.author.id === session?.user?.id ? 'items-end' : 'items-start'} flex flex-col gap-0.5`}>
-                    {c.author.id !== session?.user?.id && (
-                      <span className="text-xs text-muted px-1">{c.author.name}</span>
-                    )}
-                    <div className={`px-3 py-2 rounded-2xl text-sm ${c.author.id === session?.user?.id ? 'bg-accent text-white rounded-tr-sm' : 'bg-surface-2 text-text-primary rounded-tl-sm'}`}>
-                      {c.content}
-                    </div>
-                    <span className="text-xs text-muted px-1">{timeAgo(c.createdAt)}</span>
-                  </div>
+          {/* Sub-tabs */}
+          {canChat && canTeamChat ? (
+            <div className="flex border-b border-border">
+              <button
+                onClick={() => { setChatSubTab('global'); loadChat() }}
+                className={`flex-1 py-2.5 text-sm font-medium transition-colors ${chatSubTab === 'global' ? 'text-accent border-b-2 border-accent' : 'text-text-secondary hover:text-text-primary'}`}
+              >전체 채팅</button>
+              <button
+                onClick={() => { setChatSubTab('team'); if (myTeamForChat) loadTeamChat(myTeamForChat.id) }}
+                className={`flex-1 py-2.5 text-sm font-medium transition-colors ${chatSubTab === 'team' ? 'text-accent border-b-2 border-accent' : 'text-text-secondary hover:text-text-primary'}`}
+              >팀 채팅 · {myTeamForChat?.name}</button>
+            </div>
+          ) : (
+            <div className="px-4 py-3 border-b border-border text-sm font-semibold text-text-primary flex items-center gap-2">
+              <MessageSquare size={14} className="text-accent" />
+              {canTeamChat ? `팀 채팅 · ${myTeamForChat?.name}` : '전체 채팅'}
+            </div>
+          )}
+
+          {/* Messages */}
+          {(() => {
+            const activeChats = (canTeamChat && chatSubTab === 'team') ? teamChats : chats
+            return (
+              <>
+                <div className="flex-1 overflow-y-auto p-4 space-y-3" style={{ maxHeight: '400px' }}>
+                  {activeChats.length === 0 ? (
+                    <div className="text-center py-8 text-text-secondary text-sm">아직 메시지가 없습니다</div>
+                  ) : (
+                    activeChats.map((c) => (
+                      <div key={c.id} className={`flex gap-2 ${c.author.id === session?.user?.id ? 'flex-row-reverse' : ''}`}>
+                        <Avatar name={c.author.name} image={c.author.image} size={28} />
+                        <div className={`max-w-xs ${c.author.id === session?.user?.id ? 'items-end' : 'items-start'} flex flex-col gap-0.5`}>
+                          {c.author.id !== session?.user?.id && (
+                            <span className="text-xs text-muted px-1">{c.author.name}</span>
+                          )}
+                          <div className={`px-3 py-2 rounded-2xl text-sm ${c.author.id === session?.user?.id ? 'bg-accent text-white rounded-tr-sm' : 'bg-surface-2 text-text-primary rounded-tl-sm'}`}>
+                            {c.content}
+                          </div>
+                          <span className="text-xs text-muted px-1">{timeAgo(c.createdAt)}</span>
+                        </div>
+                      </div>
+                    ))
+                  )}
                 </div>
-              ))
-            )}
-          </div>
-          <div className="px-4 py-3 border-t border-border flex gap-2">
-            <input
-              value={chatMsg}
-              onChange={(e) => setChatMsg(e.target.value)}
-              onKeyDown={(e) => e.key === 'Enter' && !e.shiftKey && sendChat()}
-              placeholder="메시지 입력..."
-              className="flex-1 bg-background border border-border rounded-lg px-3 py-2 text-sm text-text-primary focus:outline-none focus:border-accent"
-            />
-            <button onClick={sendChat} disabled={chatLoading || !chatMsg.trim()}
-              className="flex items-center gap-1 px-3 py-2 rounded-lg bg-accent text-white text-sm font-semibold hover:bg-accent-dim transition-colors disabled:opacity-50">
-              <Send size={13} /> 전송
-            </button>
-          </div>
+                <div className="px-4 py-3 border-t border-border flex gap-2">
+                  {canTeamChat && chatSubTab === 'team' ? (
+                    <>
+                      <input
+                        value={teamChatMsg}
+                        onChange={(e) => setTeamChatMsg(e.target.value)}
+                        onKeyDown={(e) => e.key === 'Enter' && !e.shiftKey && myTeamForChat && sendTeamChat(myTeamForChat.id)}
+                        placeholder="팀원에게 메시지..."
+                        className="flex-1 bg-background border border-border rounded-lg px-3 py-2 text-sm text-text-primary focus:outline-none focus:border-accent"
+                      />
+                      <button onClick={() => myTeamForChat && sendTeamChat(myTeamForChat.id)} disabled={teamChatLoading || !teamChatMsg.trim()}
+                        className="flex items-center gap-1 px-3 py-2 rounded-lg bg-accent text-white text-sm font-semibold hover:bg-accent-dim transition-colors disabled:opacity-50">
+                        <Send size={13} /> 전송
+                      </button>
+                    </>
+                  ) : canChat ? (
+                    <>
+                      <input
+                        value={chatMsg}
+                        onChange={(e) => setChatMsg(e.target.value)}
+                        onKeyDown={(e) => e.key === 'Enter' && !e.shiftKey && sendChat()}
+                        placeholder="메시지 입력..."
+                        className="flex-1 bg-background border border-border rounded-lg px-3 py-2 text-sm text-text-primary focus:outline-none focus:border-accent"
+                      />
+                      <button onClick={sendChat} disabled={chatLoading || !chatMsg.trim()}
+                        className="flex items-center gap-1 px-3 py-2 rounded-lg bg-accent text-white text-sm font-semibold hover:bg-accent-dim transition-colors disabled:opacity-50">
+                        <Send size={13} /> 전송
+                      </button>
+                    </>
+                  ) : null}
+                </div>
+              </>
+            )
+          })()}
         </div>
       )}
 
