@@ -19,13 +19,13 @@ interface LeaderUser {
 
 const RANK_STYLES = [
   'text-amber-400 bg-amber-500/10 border-amber-500/30',
-  'text-slate-300 bg-slate-400/15 border-slate-400/40',
+  'text-slate-200 bg-slate-400/25 border-slate-300/50',
   'text-amber-700 bg-amber-900/20 border-amber-700/40',
 ]
 
 const ROW_RANK_STYLES = [
   'border-amber-500/30 bg-amber-500/5 hover:bg-amber-500/10',
-  'border-slate-400/35 bg-slate-400/10 hover:bg-slate-400/15',
+  'border-slate-300/50 bg-slate-400/20 hover:bg-slate-400/25',
   'border-amber-700/30 bg-amber-900/10 hover:bg-amber-900/15',
 ]
 
