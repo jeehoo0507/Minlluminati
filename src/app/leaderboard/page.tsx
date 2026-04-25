@@ -23,6 +23,12 @@ const RANK_STYLES = [
   'text-orange-400 bg-orange-500/10 border-orange-500/30',
 ]
 
+const ROW_RANK_STYLES = [
+  'border-amber-500/30 bg-amber-500/5 hover:bg-amber-500/10',
+  'border-slate-500/25 bg-slate-500/5 hover:bg-slate-500/10',
+  'border-orange-500/25 bg-orange-500/5 hover:bg-orange-500/10',
+]
+
 export default function LeaderboardPage() {
   const { data: session } = useSession()
   const [users, setUsers] = useState<LeaderUser[]>([])
@@ -93,6 +99,8 @@ export default function LeaderboardPage() {
                 className={`flex items-center gap-3 p-3 rounded-xl border transition-colors ${
                   isMe && rank > 3
                     ? 'border-accent/30 bg-accent/5'
+                    : rank <= 3
+                    ? ROW_RANK_STYLES[rank - 1]
                     : 'border-border bg-surface hover:border-border-2 hover:bg-surface-2'
                 }`}
               >
