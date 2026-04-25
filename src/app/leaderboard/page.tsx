@@ -18,9 +18,9 @@ interface LeaderUser {
 }
 
 const RANK_STYLES = [
-  'text-amber-400 bg-amber-500/10 border-amber-500/30',
+  'text-white bg-amber-500/40 border-amber-400/50',
   'text-white bg-slate-500/40 border-slate-400/50',
-  'text-amber-700 bg-amber-900/20 border-amber-700/40',
+  'text-white bg-amber-700/50 border-amber-700/50',
 ]
 
 const ROW_RANK_STYLES = [
