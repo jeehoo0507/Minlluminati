@@ -63,7 +63,7 @@ export default function LeaderboardPage() {
         const me = users[myRank - 1]
         const tierName = me?.isMaster ? '마스터' : getTier(session?.user?.points ?? 0).name
         return (
-          <div className={`p-3 border rounded-lg text-sm text-center ${me?.isMaster ? 'bg-yellow-500/5 border-yellow-500/30 text-yellow-600 dark:text-yellow-400' : 'bg-accent/5 border-accent/20 text-accent'}`}>
+          <div className="p-3 border border-accent/20 bg-accent/5 rounded-lg text-sm text-center text-accent">
             내 순위: <strong>{myRank}위</strong> · {session?.user?.points ?? 0}pt · {tierName}
           </div>
         )
@@ -88,8 +88,6 @@ export default function LeaderboardPage() {
                 className={`flex items-center gap-3 p-3 rounded-xl border transition-colors ${
                   isMe
                     ? 'border-accent/30 bg-accent/5'
-                    : user.isMaster
-                    ? 'border-yellow-500/40 bg-yellow-500/5 hover:bg-yellow-500/10'
                     : 'border-border bg-surface hover:border-border-2 hover:bg-surface-2'
                 }`}
               >
