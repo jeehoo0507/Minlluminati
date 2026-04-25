@@ -18,9 +18,9 @@ interface LeaderUser {
 }
 
 const RANK_STYLES = [
-  'text-yellow-700 bg-yellow-50 border-yellow-300',
-  'text-gray-600 bg-gray-100 border-gray-300',
-  'text-orange-700 bg-orange-50 border-orange-300',
+  'text-amber-400 bg-amber-500/10 border-amber-500/30',
+  'text-slate-400 bg-slate-500/10 border-slate-500/30',
+  'text-orange-400 bg-orange-500/10 border-orange-500/30',
 ]
 
 export default function LeaderboardPage() {
