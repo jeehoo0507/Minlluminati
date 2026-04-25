@@ -19,7 +19,7 @@ interface LeaderUser {
 
 const RANK_STYLES = [
   'text-amber-400 bg-amber-500/10 border-amber-500/30',
-  'text-slate-200 bg-slate-400/25 border-slate-300/50',
+  'text-white bg-slate-500/40 border-slate-400/50',
   'text-amber-700 bg-amber-900/20 border-amber-700/40',
 ]
 
