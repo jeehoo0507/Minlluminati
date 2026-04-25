@@ -17,11 +17,6 @@ interface LeaderUser {
   _count: { posts: number }
 }
 
-const RANK_STYLES = [
-  'text-yellow-700 bg-yellow-50 border-yellow-300',
-  'text-gray-600 bg-gray-100 border-gray-300',
-  'text-orange-700 bg-orange-50 border-orange-300',
-]
 
 export default function LeaderboardPage() {
   const { data: session } = useSession()
@@ -99,7 +94,7 @@ export default function LeaderboardPage() {
                 }`}
               >
                 {/* Rank */}
-                <div className={`w-8 h-8 flex items-center justify-center rounded-lg text-sm font-bold shrink-0 border ${rank <= 3 ? RANK_STYLES[rank - 1] : 'text-muted border-transparent'}`}>
+                <div className={`w-8 h-8 flex items-center justify-center rounded-lg text-sm font-bold shrink-0 border text-muted border-transparent`}>
                   {rank}
                 </div>
 
