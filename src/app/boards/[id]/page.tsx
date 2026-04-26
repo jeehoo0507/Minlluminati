@@ -465,19 +465,18 @@ export default function BoardCanvas() {
       if (e.pointerType === 'pen') lastPenTimeRef.current = Date.now()
 
       if (isDrawingPenRef.current) {
-        // ② 이미 pen 스트로크 중 — 터치(손바닥) 차단
-        if (drawingPointerTypeRef.current === 'pen' && e.pointerType === 'touch') return
-        // ③ 터치 ghost 스트로크 중 pen 진입 → touch 취소 후 pen 스트로크 시작
-        if (e.pointerType === 'pen' && drawingPointerTypeRef.current === 'touch') {
-          isDrawingPenRef.current = false
-          drawingPointerIdRef.current = null
-          drawingPointerTypeRef.current = null
-          drawingPointsRef.current = []
-          if (livePathRef.current) livePathRef.current.setAttribute('d', '')
-          // fall through → 아래에서 pen 스트로크 시작
-        } else {
-          return // 그 외 중복 포인터 무시
-        }
+        // 터치(손바닥/ghost) → 항상 차단
+        if (e.pointerType === 'touch') return
+        // 마우스 등 비-펜 → 차단
+        if (e.pointerType !== 'pen') return
+        // pen pointerdown인데 이미 드로잉 중 = stuck 또는 ghost → 강제 초기화 후 새 스트로크 시작
+        // ★ 이 케이스가 "펜→펜" stuck 상태에서 계속 씹히던 버그의 원인
+        isDrawingPenRef.current = false
+        drawingPointerIdRef.current = null
+        drawingPointerTypeRef.current = null
+        drawingPointsRef.current = []
+        if (livePathRef.current) livePathRef.current.setAttribute('d', '')
+        // fall through → 아래에서 새 pen 스트로크 시작
       }
       e.preventDefault()
       const pos = screenToWorld(e.clientX, e.clientY)
