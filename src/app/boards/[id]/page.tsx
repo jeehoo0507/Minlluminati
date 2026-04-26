@@ -447,8 +447,13 @@ export default function BoardCanvas() {
       setIsDrawingPen(true); isDrawingPenRef.current = true
       drawingPointerIdRef.current  = e.pointerId
       drawingPointerTypeRef.current = e.pointerType // 'pen' | 'touch' | 'mouse'
-      ;(e.currentTarget as HTMLElement).setPointerCapture(e.pointerId)
-      if (livePathRef.current) livePathRef.current.setAttribute('d', `M ${pos.x} ${pos.y}`)
+      try { (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId) } catch { /* noop — Galaxy 등 일부 기기 InvalidStateError 방어 */ }
+      if (livePathRef.current) {
+        livePathRef.current.setAttribute('d', `M ${pos.x} ${pos.y}`)
+        // stroke 속성을 pointerdown 시 한 번만 설정 (pointermove 에서 반복 설정 불필요)
+        livePathRef.current.setAttribute('stroke', penColorRef.current)
+        livePathRef.current.setAttribute('stroke-width', String((penWidthRef.current / zoomRef2.current).toFixed(2)))
+      }
       return
     }
 
@@ -473,8 +478,13 @@ export default function BoardCanvas() {
 
   function onCanvasPointerMove(e: React.PointerEvent) {
     if (isGesturingRef.current && e.pointerType === 'touch') return // 터치만 무시, 펜은 허용
-    // Broadcast cursor
-    const pos = screenToWorld(e.clientX, e.clientY)
+
+    // getBoundingClientRect 는 한 번만 계산 (coalesced loop 마다 호출하면 레이아웃 강제 재계산 → Apple Pencil 지연)
+    const rect = wrapperRef.current!.getBoundingClientRect()
+    const _p = panRef2.current; const _z = zoomRef2.current
+    const toWorld = (sx: number, sy: number) => ({ x: (sx - rect.left - _p.x) / _z, y: (sy - rect.top - _p.y) / _z })
+
+    const pos = toWorld(e.clientX, e.clientY)
     broadcastCursor(pos.x, pos.y)
 
     if (isPanning && panRef.current) {
@@ -488,11 +498,14 @@ export default function BoardCanvas() {
       if (drawingPointerIdRef.current !== null && e.pointerId !== drawingPointerIdRef.current) return
 
       // 코얼레스드 이벤트로 고주파 입력 수집
-      const events = (e.nativeEvent as PointerEvent).getCoalescedEvents?.() ?? [e.nativeEvent as PointerEvent]
+      // getCoalescedEvents()가 빈 배열을 반환하는 기기(Galaxy 등) 대응 — 현재 이벤트를 fallback으로 사용
+      const raw = (e.nativeEvent as PointerEvent).getCoalescedEvents?.() ?? []
+      const events = raw.length > 0 ? raw : [e.nativeEvent as PointerEvent]
+
       const pts = drawingPointsRef.current
       const prevLen = pts.length
       for (const ce of events) {
-        pts.push(screenToWorld(ce.clientX, ce.clientY))
+        pts.push(toWorld(ce.clientX, ce.clientY)) // 캐시된 rect 재사용 (getBoundingClientRect 반복 호출 없음)
       }
       if (pts.length < 2) return
 
@@ -514,8 +527,7 @@ export default function BoardCanvas() {
         }
         livePathRef.current.setAttribute('d', d)
       }
-      livePathRef.current.setAttribute('stroke', penColorRef.current)
-      livePathRef.current.setAttribute('stroke-width', String((penWidthRef.current / zoom).toFixed(2)))
+      // stroke 속성은 pointerdown 시 이미 설정됨 → 매 move 마다 반복 설정 불필요
     }
     if (isRectSelecting && selRectStartRef.current) {
       setSelRect({ x1: selRectStartRef.current.x, y1: selRectStartRef.current.y, x2: pos.x, y2: pos.y })
