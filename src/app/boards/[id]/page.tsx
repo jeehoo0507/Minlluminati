@@ -465,18 +465,18 @@ export default function BoardCanvas() {
       if (e.pointerType === 'pen') lastPenTimeRef.current = Date.now()
 
       if (isDrawingPenRef.current) {
-        // 터치(손바닥/ghost) → 항상 차단
-        if (e.pointerType === 'touch') return
-        // 마우스 등 비-펜 → 차단
-        if (e.pointerType !== 'pen') return
-        // pen pointerdown인데 이미 드로잉 중 = stuck 또는 ghost → 강제 초기화 후 새 스트로크 시작
-        // ★ 이 케이스가 "펜→펜" stuck 상태에서 계속 씹히던 버그의 원인
+        // 같은 포인터 ID가 다시 pointerdown → 무시 (정상적으론 발생 안 함)
+        if (e.pointerId === drawingPointerIdRef.current) return
+        // 팜 리젝션: pen 스트로크 중 새 touch → 손바닥으로 간주, 차단
+        // ★ 주의: 'touch'를 무조건 차단하면 iOS에서 pencil이 touch로 리포트될 때 모든 stroke 씹힘
+        //         → currentType이 'pen'일 때만 touch를 팜으로 차단
+        if (e.pointerType === 'touch' && drawingPointerTypeRef.current === 'pen') return
+        // 그 외 (새 포인터 ID, stuck, ghost): 강제 초기화 후 새 스트로크 시작
         isDrawingPenRef.current = false
         drawingPointerIdRef.current = null
         drawingPointerTypeRef.current = null
         drawingPointsRef.current = []
         if (livePathRef.current) livePathRef.current.setAttribute('d', '')
-        // fall through → 아래에서 새 pen 스트로크 시작
       }
       e.preventDefault()
       const pos = screenToWorld(e.clientX, e.clientY)
@@ -484,7 +484,7 @@ export default function BoardCanvas() {
       setIsDrawingPen(true); isDrawingPenRef.current = true
       drawingPointerIdRef.current  = e.pointerId
       drawingPointerTypeRef.current = e.pointerType
-      try { (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId) } catch { /* noop — 일부 기기 InvalidStateError 방어 */ }
+      // setPointerCapture 제거 — iOS에서 Apple Pencil 이벤트 흐름 방해 가능성
       if (livePathRef.current) {
         livePathRef.current.setAttribute('d', `M ${pos.x} ${pos.y}`)
         livePathRef.current.setAttribute('stroke', penColorRef.current)
