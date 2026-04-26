@@ -90,6 +90,7 @@ export default function BoardCanvas() {
   const isDrawingPenRef      = useRef(false)
   const drawingPointerIdRef  = useRef<number | null>(null)   // 드로잉 중인 포인터 ID
   const drawingPointerTypeRef = useRef<string | null>(null)  // 'pen' | 'touch' | 'mouse'
+  const lastPenTimeRef       = useRef(0)  // 마지막 pen 포인터 이벤트 시각 — 시간 기반 팜 리젝션
   const isDraggingRef        = useRef(false)
   const isResizingRef        = useRef(false)
   const [isRectSelecting, setIsRectSelecting] = useState(false)
@@ -273,6 +274,28 @@ export default function BoardCanvas() {
     }
   }, [elements, scheduleSave]) // eslint-disable-line react-hooks/exhaustive-deps
 
+  // ── 스타일러스 stroke stuck 안전망 ────────────────────────────────
+  // setPointerCapture 실패 또는 캔버스 밖 pointerup 발생 시 drawing state 강제 초기화
+  useEffect(() => {
+    const onGlobalUp = (e: PointerEvent) => {
+      if (!isDrawingPenRef.current) return
+      if (drawingPointerIdRef.current !== null && e.pointerId !== drawingPointerIdRef.current) return
+      // React onPointerUp이 이미 처리했다면 isDrawingPenRef가 false — 이 경우 early return함
+      isDrawingPenRef.current = false
+      setIsDrawingPen(false)
+      drawingPointerIdRef.current = null
+      drawingPointerTypeRef.current = null
+      drawingPointsRef.current = []
+      if (livePathRef.current) livePathRef.current.setAttribute('d', '')
+    }
+    window.addEventListener('pointerup', onGlobalUp)
+    window.addEventListener('pointercancel', onGlobalUp)
+    return () => {
+      window.removeEventListener('pointerup', onGlobalUp)
+      window.removeEventListener('pointercancel', onGlobalUp)
+    }
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
+
   // ── Cursor broadcast ──────────────────────────────────────────────
   const broadcastCursor = useCallback((wx: number, wy: number) => {
     if (cursorThrottleRef.current) return
@@ -436,21 +459,35 @@ export default function BoardCanvas() {
     }
 
     if (tool === 'pen') {
+      // ① 시간 기반 팜 리젝션: pen 입력이 있었던 300ms 이내 touch는 팜으로 간주하여 무시
+      if (e.pointerType === 'touch' && Date.now() - lastPenTimeRef.current < 300) return
+      // pen 이벤트 시각 갱신
+      if (e.pointerType === 'pen') lastPenTimeRef.current = Date.now()
+
       if (isDrawingPenRef.current) {
-        // 이미 드로잉 중 — Apple Pencil 스트로크에 터치가 끼어들면 무시
+        // ② 이미 pen 스트로크 중 — 터치(손바닥) 차단
         if (drawingPointerTypeRef.current === 'pen' && e.pointerType === 'touch') return
-        return // 다른 포인터도 무시
+        // ③ 터치 ghost 스트로크 중 pen 진입 → touch 취소 후 pen 스트로크 시작
+        if (e.pointerType === 'pen' && drawingPointerTypeRef.current === 'touch') {
+          isDrawingPenRef.current = false
+          drawingPointerIdRef.current = null
+          drawingPointerTypeRef.current = null
+          drawingPointsRef.current = []
+          if (livePathRef.current) livePathRef.current.setAttribute('d', '')
+          // fall through → 아래에서 pen 스트로크 시작
+        } else {
+          return // 그 외 중복 포인터 무시
+        }
       }
       e.preventDefault()
       const pos = screenToWorld(e.clientX, e.clientY)
       drawingPointsRef.current = [pos]
       setIsDrawingPen(true); isDrawingPenRef.current = true
       drawingPointerIdRef.current  = e.pointerId
-      drawingPointerTypeRef.current = e.pointerType // 'pen' | 'touch' | 'mouse'
-      try { (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId) } catch { /* noop — Galaxy 등 일부 기기 InvalidStateError 방어 */ }
+      drawingPointerTypeRef.current = e.pointerType
+      try { (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId) } catch { /* noop — 일부 기기 InvalidStateError 방어 */ }
       if (livePathRef.current) {
         livePathRef.current.setAttribute('d', `M ${pos.x} ${pos.y}`)
-        // stroke 속성을 pointerdown 시 한 번만 설정 (pointermove 에서 반복 설정 불필요)
         livePathRef.current.setAttribute('stroke', penColorRef.current)
         livePathRef.current.setAttribute('stroke-width', String((penWidthRef.current / zoomRef2.current).toFixed(2)))
       }
@@ -478,6 +515,9 @@ export default function BoardCanvas() {
 
   function onCanvasPointerMove(e: React.PointerEvent) {
     if (isGesturingRef.current && e.pointerType === 'touch') return // 터치만 무시, 펜은 허용
+
+    // pen 호버/이동 시각 갱신 — 팜 리젝션 300ms 윈도우 유지
+    if (e.pointerType === 'pen') lastPenTimeRef.current = Date.now()
 
     // getBoundingClientRect 는 한 번만 계산 (coalesced loop 마다 호출하면 레이아웃 강제 재계산 → Apple Pencil 지연)
     const rect = wrapperRef.current!.getBoundingClientRect()
