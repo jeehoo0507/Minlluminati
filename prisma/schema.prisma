@@ -68,6 +68,10 @@ model User {
   teamMemberships ContestTeamMember[]
   ledTeams        ContestTeam[]       @relation("TeamLeader")
 
+  // Boards
+  ownedBoards      Board[]       @relation("BoardOwner")
+  boardMemberships BoardMember[]
+
   @@map("users")
 }
 
@@ -533,6 +537,54 @@ model ContestTeamMember {
 
   @@unique([teamId, userId])
   @@map("contest_team_members")
+}
+
+// ───────────────────────────── Board (FigJam-style whiteboard) ─────────────────────────────
+
+model Board {
+  id          String        @id @default(cuid())
+  name        String
+  description String        @default("")
+  isPublic    Boolean       @default(true)
+  ownerId     String
+  owner       User          @relation("BoardOwner", fields: [ownerId], references: [id])
+  members     BoardMember[]
+  elements    BoardElement[]
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+
+  @@map("boards")
+}
+
+model BoardMember {
+  id      String @id @default(cuid())
+  boardId String
+  userId  String
+  role    String @default("EDITOR") // VIEWER | EDITOR | ADMIN
+  board   Board  @relation(fields: [boardId], references: [id], onDelete: Cascade)
+  user    User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  joinedAt DateTime @default(now())
+
+  @@unique([boardId, userId])
+  @@map("board_members")
+}
+
+model BoardElement {
+  id        String   @id @default(cuid())
+  boardId   String
+  type      String   // IMAGE | TEXT | STICKY | SHAPE | ARROW
+  x         Float
+  y         Float
+  width     Float    @default(200)
+  height    Float    @default(150)
+  content   String   @default("")
+  style     String   @default("{}")
+  zIndex    Int      @default(0)
+  board     Board    @relation(fields: [boardId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("board_elements")
 }
 
 // ───────────────────────────── NextAuth ─────────────────────────────

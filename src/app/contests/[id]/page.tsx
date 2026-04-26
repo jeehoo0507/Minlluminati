@@ -459,9 +459,9 @@ export default function ContestPage() {
   const STATUS_TEXT: Record<string, string> = { APPROVED: '참가 신청', ONGOING: '진행 중', ENDED: '종료', PENDING: '검토 중', DRAFT: '초안' }
 
   return (
-    <div className="max-w-4xl mx-auto px-4 py-8 space-y-6">
+    <div className="max-w-4xl mx-auto px-4 py-4 space-y-4">
       {/* Header */}
-      <div className="bg-surface border border-border rounded-2xl p-6 space-y-4">
+      <div className="bg-surface border border-border rounded-xl p-4 space-y-3">
         {editingInfo ? (
           <div className="space-y-3">
             <div className="flex items-center justify-between mb-1">
@@ -574,7 +574,7 @@ export default function ContestPage() {
                     </span>
                   )}
                 </div>
-                <h1 className="text-2xl font-bold text-text-primary">{contest.title}</h1>
+                <h1 className="text-xl font-bold text-text-primary">{contest.title}</h1>
                 {contest.description && <p className="text-sm text-text-secondary mt-1">{contest.description}</p>}
               </div>
               <div className="shrink-0 flex flex-col items-end gap-2">
@@ -635,7 +635,7 @@ export default function ContestPage() {
         <div className="flex flex-wrap gap-2">
           {canStart && (
             <button onClick={handleStart}
-              className="flex items-center gap-1.5 px-4 py-2 rounded-lg bg-green-600 text-white text-sm font-semibold hover:bg-green-700 transition-colors">
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-green-600 text-white text-sm font-semibold hover:bg-green-700 transition-colors">
               <Play size={14} /> 대회 시작
             </button>
           )}
@@ -644,24 +644,24 @@ export default function ContestPage() {
               const myTeam = teams.find((t) => t.members.some((m) => m.userId === session.user!.id))
               return myTeam ? (
                 <button onClick={() => handleLeaveTeam(myTeam.id)}
-                  className="px-4 py-2 rounded-lg border border-border text-sm text-text-secondary hover:text-text-primary transition-colors">
+                  className="px-3 py-1.5 rounded-lg border border-border text-sm text-text-secondary hover:text-text-primary transition-colors">
                   팀 탈퇴
                 </button>
               ) : (
                 <button onClick={() => setShowTeamModal(true)}
-                  className="px-4 py-2 rounded-lg bg-accent text-white text-sm font-semibold hover:bg-accent-dim transition-colors">
+                  className="px-3 py-1.5 rounded-lg bg-accent text-white text-sm font-semibold hover:bg-accent-dim transition-colors">
                   팀 만들기
                 </button>
               )
             })() : (
               isParticipant ? (
                 <button onClick={handleLeave}
-                  className="px-4 py-2 rounded-lg border border-border text-sm text-text-secondary hover:text-text-primary transition-colors">
+                  className="px-3 py-1.5 rounded-lg border border-border text-sm text-text-secondary hover:text-text-primary transition-colors">
                   참가 취소
                 </button>
               ) : (
                 <button onClick={handleJoin}
-                  className="px-4 py-2 rounded-lg bg-accent text-white text-sm font-semibold hover:bg-accent-dim transition-colors">
+                  className="px-3 py-1.5 rounded-lg bg-accent text-white text-sm font-semibold hover:bg-accent-dim transition-colors">
                   참가하기
                 </button>
               )
@@ -671,10 +671,10 @@ export default function ContestPage() {
       </div>
 
       {/* Tabs */}
-      <div className="flex gap-1 p-1 bg-surface rounded-xl border border-border w-fit flex-wrap">
+      <div className="flex gap-0.5 p-0.5 bg-surface rounded-lg border border-border w-fit flex-wrap">
         {(['problems', 'leaderboard', 'info'] as const).map((t) => (
           <button key={t} onClick={() => { setTab(t); if (t === 'leaderboard') { loadLeaderboard(); if (contest.teamContest) loadTeams() } }}
-            className={`px-4 py-1.5 rounded-lg text-sm font-medium transition-colors ${tab === t ? 'bg-accent text-white' : 'text-text-secondary hover:text-text-primary'}`}>
+            className={`px-3 py-1 rounded-md text-xs font-medium transition-colors ${tab === t ? 'bg-accent text-white' : 'text-text-secondary hover:text-text-primary'}`}>
             {t === 'problems' ? '문제' : t === 'leaderboard' ? '순위표' : '정보'}
           </button>
         ))}
@@ -685,13 +685,13 @@ export default function ContestPage() {
             if (canTeamChat && myTeamForChat) { setChatSubTab('team'); loadTeamChat(myTeamForChat.id) }
             else setChatSubTab('global')
           }}
-            className={`flex items-center gap-1 px-4 py-1.5 rounded-lg text-sm font-medium transition-colors ${tab === 'chat' ? 'bg-accent text-white' : 'text-text-secondary hover:text-text-primary'}`}>
+            className={`flex items-center gap-1 px-3 py-1 rounded-md text-xs font-medium transition-colors ${tab === 'chat' ? 'bg-accent text-white' : 'text-text-secondary hover:text-text-primary'}`}>
             <MessageSquare size={13} /> 채팅
           </button>
         )}
         {(isOrganizer || isAdmin || isContributor) && (
           <button onClick={() => { setTab('essay'); loadEssayReviews() }}
-            className={`flex items-center gap-1 px-4 py-1.5 rounded-lg text-sm font-medium transition-colors ${tab === 'essay' ? 'bg-accent text-white' : 'text-text-secondary hover:text-text-primary'}`}>
+            className={`flex items-center gap-1 px-3 py-1 rounded-md text-xs font-medium transition-colors ${tab === 'essay' ? 'bg-accent text-white' : 'text-text-secondary hover:text-text-primary'}`}>
             <FileText size={13} /> 서술형 검토
           </button>
         )}
@@ -699,7 +699,7 @@ export default function ContestPage() {
 
       {/* Problems */}
       {tab === 'problems' && (
-        <div className="space-y-4">
+        <div className="space-y-3">
           {contest.status === 'APPROVED' && !isParticipant && !isOrganizer && !isContributor && (
             <div className="p-4 bg-surface border border-border rounded-xl text-sm text-text-secondary text-center">
               대회 시작 후 참가자에게 문제가 공개됩니다
@@ -712,7 +712,7 @@ export default function ContestPage() {
             return (
               <div
                 key={problem.id}
-                className={`bg-surface border rounded-2xl p-5 space-y-4 transition-all ${solved ? 'border-green-300' : 'border-border'} ${isDragOver ? 'ring-2 ring-accent/40 border-accent/40' : ''}`}
+                className={`bg-surface border rounded-xl p-4 space-y-3 transition-all ${solved ? 'border-green-300' : 'border-border'} ${isDragOver ? 'ring-2 ring-accent/40 border-accent/40' : ''}`}
                 draggable={canEditProblems}
                 onDragStart={() => { dragPidRef.current = problem.id }}
                 onDragOver={(e) => { if (!canEditProblems) return; e.preventDefault(); setDragOverPid(problem.id) }}
@@ -1067,7 +1067,7 @@ export default function ContestPage() {
 
           {/* Add Problem form */}
           {addingProblem && (
-            <div className="bg-surface border border-accent/30 rounded-2xl p-5 space-y-3">
+            <div className="bg-surface border border-accent/30 rounded-xl p-4 space-y-3">
               <div className="flex items-center justify-between">
                 <span className="text-sm font-bold text-accent">새 문제 추가</span>
                 <button onClick={() => setAddingProblem(false)} className="text-muted hover:text-text-secondary"><X size={14} /></button>
@@ -1234,7 +1234,7 @@ export default function ContestPage() {
               {(essayFilterProblem === 'all' ? essayReviews : essayReviews.filter(s => s.problem.id === essayFilterProblem)).map((sub) => {
                 const images: string[] = (() => { try { return JSON.parse(sub.imageUrls) } catch { return [] } })()
                 return (
-                  <div key={sub.id} className={`bg-surface border rounded-2xl p-5 space-y-3 ${sub.status === 'APPROVED' ? 'border-green-300' : sub.status === 'REJECTED' ? 'border-red-300' : 'border-border'}`}>
+                  <div key={sub.id} className={`bg-surface border rounded-xl p-4 space-y-3 ${sub.status === 'APPROVED' ? 'border-green-300' : sub.status === 'REJECTED' ? 'border-red-300' : 'border-border'}`}>
                     <div className="flex items-start justify-between gap-3">
                       <div className="flex items-center gap-2">
                         <Avatar name={sub.user.name} image={sub.user.image} size={28} />
@@ -1289,7 +1289,7 @@ export default function ContestPage() {
                 const myTeam = teams.find((t) => t.id === entry.teamId)
                 const isMine = myTeam?.members.some((m) => m.userId === session?.user?.id)
                 return (
-                  <div key={entry.teamId} className={`bg-surface border rounded-2xl p-4 space-y-3 ${isMine ? 'border-accent/40' : 'border-border'}`}>
+                  <div key={entry.teamId} className={`bg-surface border rounded-xl p-3 space-y-2 ${isMine ? 'border-accent/40' : 'border-border'}`}>
                     <div className="flex items-center justify-between">
                       <div className="flex items-center gap-3">
                         <span className={`w-7 h-7 inline-flex items-center justify-center rounded-lg text-sm font-bold border ${
@@ -1336,35 +1336,35 @@ export default function ContestPage() {
             )}
           </div>
         ) : (
-          <div className="bg-surface border border-border rounded-2xl overflow-hidden">
+          <div className="bg-surface border border-border rounded-xl overflow-hidden">
             {leaderboard.length === 0 ? (
-              <div className="text-center py-12 text-text-secondary text-sm">아직 참가자가 없습니다</div>
+              <div className="text-center py-8 text-text-secondary text-sm">아직 참가자가 없습니다</div>
             ) : (
               <table className="w-full text-sm">
                 <thead><tr className="border-b border-border bg-surface-2">
-                  <th className="px-4 py-3 text-left text-xs font-semibold text-text-secondary">순위</th>
-                  <th className="px-4 py-3 text-left text-xs font-semibold text-text-secondary">참가자</th>
-                  <th className="px-4 py-3 text-left text-xs font-semibold text-text-secondary">해결</th>
-                  <th className="px-4 py-3 text-right text-xs font-semibold text-text-secondary">점수</th>
+                  <th className="px-3 py-2 text-left text-xs font-semibold text-text-secondary">순위</th>
+                  <th className="px-3 py-2 text-left text-xs font-semibold text-text-secondary">참가자</th>
+                  <th className="px-3 py-2 text-left text-xs font-semibold text-text-secondary">해결</th>
+                  <th className="px-3 py-2 text-right text-xs font-semibold text-text-secondary">점수</th>
                 </tr></thead>
                 <tbody>
                   {leaderboard.map((entry) => (
                     <tr key={entry.user.id} className={`border-b border-border last:border-0 hover:bg-surface-2 transition-colors ${session?.user?.id === entry.user.id ? 'bg-accent/5' : ''}`}>
-                      <td className="px-4 py-3">
-                        <span className={`w-7 h-7 inline-flex items-center justify-center rounded-lg text-sm font-bold border ${
+                      <td className="px-3 py-2">
+                        <span className={`w-6 h-6 inline-flex items-center justify-center rounded text-xs font-bold border ${
                           entry.rank === 1 ? 'text-yellow-700 bg-yellow-50 border-yellow-300' :
                           entry.rank === 2 ? 'text-gray-600 bg-gray-100 border-gray-300' :
                           entry.rank === 3 ? 'text-orange-700 bg-orange-50 border-orange-300' :
                           'text-muted border-transparent'}`}>{entry.rank}</span>
                       </td>
-                      <td className="px-4 py-3">
+                      <td className="px-3 py-2">
                         <div className="flex items-center gap-2">
-                          <Avatar name={entry.user.name} image={entry.user.image} size={24} />
-                          <span className="font-medium text-text-primary">{entry.user.name ?? '?'}</span>
+                          <Avatar name={entry.user.name} image={entry.user.image} size={22} />
+                          <span className="font-medium text-text-primary text-sm">{entry.user.name ?? '?'}</span>
                           {session?.user?.id === entry.user.id && <span className="text-xs text-accent">(나)</span>}
                         </div>
                       </td>
-                      <td className="px-4 py-3">
+                      <td className="px-3 py-2">
                         <div className="flex gap-1 flex-wrap">
                           {entry.solvedProblems.map((s) => (
                             <span key={s.problem.label} className="text-xs px-1.5 py-0.5 bg-green-50 border border-green-200 text-green-700 rounded font-medium">
@@ -1373,7 +1373,7 @@ export default function ContestPage() {
                           ))}
                         </div>
                       </td>
-                      <td className="px-4 py-3 text-right font-bold text-accent">{entry.score}점</td>
+                      <td className="px-3 py-2 text-right font-bold text-accent text-sm">{entry.score}점</td>
                     </tr>
                   ))}
                 </tbody>
@@ -1385,7 +1385,7 @@ export default function ContestPage() {
 
       {/* Chat */}
       {tab === 'chat' && (
-        <div className="bg-surface border border-border rounded-2xl overflow-hidden flex flex-col" style={{ minHeight: '400px' }}>
+        <div className="bg-surface border border-border rounded-xl overflow-hidden flex flex-col" style={{ minHeight: '360px' }}>
           {/* Sub-tabs */}
           {canChat && canTeamChat ? (
             <div className="flex border-b border-border">

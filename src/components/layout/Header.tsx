@@ -18,6 +18,7 @@ const NAV_ITEMS = [
   { href: '/leaderboard', label: '랭킹' },
   { href: '/contests', label: '대회' },
   { href: '/groups', label: '그룹' },
+  { href: '/boards', label: '보드' },
   { href: '/timer', label: '타이머' },
 ]
 
