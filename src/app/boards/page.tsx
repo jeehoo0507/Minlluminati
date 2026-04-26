@@ -181,7 +181,7 @@ export default function BoardsPage() {
           <h1 className="text-2xl font-bold text-text-primary flex items-center gap-2">
             <Layout size={22} className="text-accent" /> 보드
           </h1>
-          <p className="text-sm text-text-secondary mt-1">피그마잼처럼 함께 쓰는 무한 화이트보드</p>
+          <p className="text-sm text-text-secondary mt-1">함께 쓰는 무한 화이트보드</p>
         </div>
         {session?.user && (
           <button onClick={() => setShowNew(true)}
