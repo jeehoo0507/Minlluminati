@@ -87,7 +87,11 @@ export default function BoardCanvas() {
   const [isResizing, setIsResizing]       = useState(false)
   const [isPanning, setIsPanning]         = useState(false)
   const [isDrawingPen, setIsDrawingPen]   = useState(false)
-  const isDrawingPenRef = useRef(false)
+  const isDrawingPenRef      = useRef(false)
+  const drawingPointerIdRef  = useRef<number | null>(null)   // 드로잉 중인 포인터 ID
+  const drawingPointerTypeRef = useRef<string | null>(null)  // 'pen' | 'touch' | 'mouse'
+  const isDraggingRef        = useRef(false)
+  const isResizingRef        = useRef(false)
   const [isRectSelecting, setIsRectSelecting] = useState(false)
   const [selRect, setSelRect] = useState<{ x1: number; y1: number; x2: number; y2: number } | null>(null)
 
@@ -106,8 +110,14 @@ export default function BoardCanvas() {
   // Copy/Paste clipboard
   const clipboardRef = useRef<BoardElement[]>([])
 
+  // 삭제된 요소 ID 추적 — 명시적 delete만 서버에 전송 (notIn 삭제 경쟁 방지)
+  const deletedIdsRef = useRef<string[]>([])
+  // SSE 머지 후 로컬 요소가 보존됐을 때 re-save 예약
+  const pendingResaveRef = useRef<BoardElement[] | null>(null)
+
   // Touch gesture state for iPad two-finger pan/pinch
   const touchRef = useRef<{ id0: number; id1: number; x0: number; y0: number; x1: number; y1: number } | null>(null)
+  const isGesturingRef = useRef(false) // true while 2-finger gesture is active → block pointer events
 
   const wrapperRef   = useRef<HTMLDivElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
@@ -190,12 +200,34 @@ export default function BoardCanvas() {
           return fid
         })
       } else if (event.type === 'elements' && event.userId !== myId) {
-        // Another user updated the board — merge
+        // 다른 유저가 저장한 상태를 받아 스마트 병합
         const incoming = (event.elements as BoardElement[]).map((el: BoardElement) => ({
           ...el, type: el.type as ElementType,
           style: typeof el.style === 'string' ? JSON.parse(el.style || '{}') : el.style,
         }))
-        setElements(incoming)
+        const remoteDeletedIds: string[] = (event as { deletedIds?: string[] }).deletedIds ?? []
+        const deletedSet = new Set(remoteDeletedIds)
+
+        setElements((prev) => {
+          if (isDrawingPenRef.current) return prev
+
+          const remoteIds = new Set(incoming.map((e) => e.id))
+          // 로컬에만 있는 요소 보존 (상대방이 명시적으로 삭제한 것은 제외)
+          const localOnly = prev.filter((el) => !remoteIds.has(el.id) && !deletedSet.has(el.id))
+
+          // 드래그 중인 요소는 로컬 위치 우선
+          const activeIds: Set<string> = isDraggingRef.current && multiOrigRef.current
+            ? new Set(Array.from(multiOrigRef.current.keys()))
+            : new Set()
+
+          const merged = incoming
+            .filter((el) => !deletedSet.has(el.id))
+            .map((el) => activeIds.has(el.id) ? (prev.find((p) => p.id === el.id) ?? el) : el)
+
+          const next = [...merged, ...localOnly]
+          if (localOnly.length > 0) pendingResaveRef.current = next
+          return next
+        })
       }
     }
 
@@ -206,11 +238,22 @@ export default function BoardCanvas() {
 
   // ── Autosave ──────────────────────────────────────────────────────
   const save = useCallback(async (els: BoardElement[]) => {
+    // 명시적으로 삭제된 ID만 서버에 전달 (다른 유저 요소 삭제 경쟁 방지)
+    const deletedIds = [...deletedIdsRef.current]
+    deletedIdsRef.current = [] // 낙관적 클리어 (실패 시 복원)
     const res = await fetch(`/api/boards/${id}/elements`, {
       method: 'PUT', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ elements: els.map((el) => ({ ...el, style: JSON.stringify(el.style) })) }),
+      body: JSON.stringify({
+        elements: els.map((el) => ({ ...el, style: JSON.stringify(el.style) })),
+        deletedIds,
+      }),
     })
-    if (!res.ok) toast.error('저장 실패'); else isDirty.current = false
+    if (!res.ok) {
+      deletedIdsRef.current = [...deletedIds, ...deletedIdsRef.current] // 실패 시 복원
+      toast.error('저장 실패')
+    } else {
+      isDirty.current = false
+    }
   }, [id])
 
   const scheduleSave = useCallback((els: BoardElement[]) => {
@@ -220,6 +263,15 @@ export default function BoardCanvas() {
   }, [save])
 
   useEffect(() => () => { if (autosaveRef.current) clearTimeout(autosaveRef.current) }, [])
+
+  // SSE 머지 후 로컬 요소 보존 시 re-save 예약 처리
+  useEffect(() => {
+    if (pendingResaveRef.current) {
+      const els = pendingResaveRef.current
+      pendingResaveRef.current = null
+      scheduleSave(els)
+    }
+  }, [elements, scheduleSave]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── Cursor broadcast ──────────────────────────────────────────────
   const broadcastCursor = useCallback((wx: number, wy: number) => {
@@ -260,7 +312,11 @@ export default function BoardCanvas() {
   // ── Touch gestures (iPad two-finger pan + pinch zoom) ────────────
   function onTouchStart(e: React.TouchEvent) {
     if (e.touches.length === 2) {
+      // Apple Pencil 스트로크 중에만 두 손가락 제스처 무시 (손가락으로 쓰는 중엔 허용)
+      if (isDrawingPenRef.current && drawingPointerTypeRef.current === 'pen') return
       e.preventDefault()
+      isGesturingRef.current = true
+      setIsDragging(false); setIsPanning(false); setIsRectSelecting(false)
       const t0 = e.touches[0]; const t1 = e.touches[1]
       touchRef.current = { id0: t0.identifier, id1: t1.identifier, x0: t0.clientX, y0: t0.clientY, x1: t1.clientX, y1: t1.clientY }
     }
@@ -301,7 +357,11 @@ export default function BoardCanvas() {
   }
 
   function onTouchEnd(e: React.TouchEvent) {
-    if (e.touches.length < 2) touchRef.current = null
+    if (e.touches.length < 2) {
+      touchRef.current = null
+      // Short delay before re-enabling pointer events to prevent stray pointer-up from being processed
+      setTimeout(() => { isGesturingRef.current = false }, 80)
+    }
   }
 
   function zoomTo(v: number) {
@@ -363,6 +423,8 @@ export default function BoardCanvas() {
 
   // ── Canvas pointer events ─────────────────────────────────────────
   function onCanvasPointerDown(e: React.PointerEvent) {
+    // 두 손가락 제스처 중에는 터치 포인터만 무시 (펜/마우스는 항상 허용)
+    if (isGesturingRef.current && e.pointerType === 'touch') return
     if (e.button !== 0 && e.button !== 1) return
     setShowShapeMenu(false)
 
@@ -374,10 +436,18 @@ export default function BoardCanvas() {
     }
 
     if (tool === 'pen') {
+      if (isDrawingPenRef.current) {
+        // 이미 드로잉 중 — Apple Pencil 스트로크에 터치가 끼어들면 무시
+        if (drawingPointerTypeRef.current === 'pen' && e.pointerType === 'touch') return
+        return // 다른 포인터도 무시
+      }
       e.preventDefault()
       const pos = screenToWorld(e.clientX, e.clientY)
-      drawingPointsRef.current = [pos]; setIsDrawingPen(true); isDrawingPenRef.current = true
-      ;(e.target as HTMLElement).setPointerCapture(e.pointerId)
+      drawingPointsRef.current = [pos]
+      setIsDrawingPen(true); isDrawingPenRef.current = true
+      drawingPointerIdRef.current  = e.pointerId
+      drawingPointerTypeRef.current = e.pointerType // 'pen' | 'touch' | 'mouse'
+      ;(e.currentTarget as HTMLElement).setPointerCapture(e.pointerId)
       if (livePathRef.current) livePathRef.current.setAttribute('d', `M ${pos.x} ${pos.y}`)
       return
     }
@@ -402,6 +472,7 @@ export default function BoardCanvas() {
   }
 
   function onCanvasPointerMove(e: React.PointerEvent) {
+    if (isGesturingRef.current && e.pointerType === 'touch') return // 터치만 무시, 펜은 허용
     // Broadcast cursor
     const pos = screenToWorld(e.clientX, e.clientY)
     broadcastCursor(pos.x, pos.y)
@@ -411,21 +482,40 @@ export default function BoardCanvas() {
       setPan({ x: panRef.current.origPanX + dx, y: panRef.current.origPanY + dy })
     }
     if (isDrawingPenRef.current && livePathRef.current) {
-      // Use coalesced events for Apple Pencil / high-frequency stylus input
+      // Apple Pencil 스트로크 중 터치(손바닥) pointermove 무시
+      if (drawingPointerTypeRef.current === 'pen' && e.pointerType === 'touch') return
+      // 드로잉 시작한 포인터 ID가 아니면 무시
+      if (drawingPointerIdRef.current !== null && e.pointerId !== drawingPointerIdRef.current) return
+
+      // 코얼레스드 이벤트로 고주파 입력 수집
       const events = (e.nativeEvent as PointerEvent).getCoalescedEvents?.() ?? [e.nativeEvent as PointerEvent]
-      for (const ce of events) {
-        drawingPointsRef.current.push(screenToWorld(ce.clientX, ce.clientY))
-      }
       const pts = drawingPointsRef.current
-      if (pts.length < 2) return
-      let d = `M ${pts[0].x} ${pts[0].y}`
-      for (let i = 1; i < pts.length; i++) {
-        const p = pts[i - 1]; const c = pts[i]
-        d += ` Q ${p.x} ${p.y} ${(p.x + c.x) / 2} ${(p.y + c.y) / 2}`
+      const prevLen = pts.length
+      for (const ce of events) {
+        pts.push(screenToWorld(ce.clientX, ce.clientY))
       }
-      livePathRef.current.setAttribute('d', d)
+      if (pts.length < 2) return
+
+      // 증분 업데이트: 처음엔 전체, 이후엔 마지막 세그먼트만 추가 (빠른 쓰기 최적화)
+      if (prevLen < 2) {
+        // 초기 — 전체 path 재구성
+        let d = `M ${pts[0].x.toFixed(1)} ${pts[0].y.toFixed(1)}`
+        for (let i = 1; i < pts.length; i++) {
+          const p = pts[i - 1]; const c = pts[i]
+          d += ` Q ${p.x.toFixed(1)} ${p.y.toFixed(1)} ${((p.x + c.x) / 2).toFixed(1)} ${((p.y + c.y) / 2).toFixed(1)}`
+        }
+        livePathRef.current.setAttribute('d', d)
+      } else {
+        // 증분 — 기존 d에 새 세그먼트만 append
+        let d = livePathRef.current.getAttribute('d') ?? ''
+        for (let i = prevLen; i < pts.length; i++) {
+          const p = pts[i - 1]; const c = pts[i]
+          d += ` Q ${p.x.toFixed(1)} ${p.y.toFixed(1)} ${((p.x + c.x) / 2).toFixed(1)} ${((p.y + c.y) / 2).toFixed(1)}`
+        }
+        livePathRef.current.setAttribute('d', d)
+      }
       livePathRef.current.setAttribute('stroke', penColorRef.current)
-      livePathRef.current.setAttribute('stroke-width', String(penWidthRef.current / zoom))
+      livePathRef.current.setAttribute('stroke-width', String((penWidthRef.current / zoom).toFixed(2)))
     }
     if (isRectSelecting && selRectStartRef.current) {
       setSelRect({ x1: selRectStartRef.current.x, y1: selRectStartRef.current.y, x2: pos.x, y2: pos.y })
@@ -453,11 +543,16 @@ export default function BoardCanvas() {
     }
   }
 
-  function onCanvasPointerUp() {
+  function onCanvasPointerUp(e: React.PointerEvent) {
+    if (isGesturingRef.current && e.pointerType === 'touch') return // 터치만 무시
     if (isPanning) { setIsPanning(false); panRef.current = null }
 
     if (isDrawingPenRef.current) {
+      // 드로잉 시작한 포인터가 아닌 포인터의 up 이벤트는 무시 (손바닥이 먼저 들려도 스트로크 유지)
+      if (drawingPointerIdRef.current !== null && e.pointerId !== drawingPointerIdRef.current) return
       setIsDrawingPen(false); isDrawingPenRef.current = false
+      drawingPointerIdRef.current = null
+      drawingPointerTypeRef.current = null  // 다음 스트로크가 항상 올바른 타입으로 시작되도록 초기화
       const pts = drawingPointsRef.current
       if (livePathRef.current) livePathRef.current.setAttribute('d', '')
       if (pts.length >= 2) {
@@ -479,7 +574,8 @@ export default function BoardCanvas() {
           style: { strokeColor: penColorRef.current, strokeWidth: penWidthRef.current },
           zIndex: zIndexCounter.current++,
         }
-        addElement(el); setSelectedIds([el.id])
+        addElement(el)
+        // 펜 모드: 선택하지 않고 계속 필기할 수 있도록 (툴바 표시 방지)
       }
       drawingPointsRef.current = []
     }
@@ -499,12 +595,12 @@ export default function BoardCanvas() {
     }
 
     if (isDragging) {
-      setIsDragging(false)
+      setIsDragging(false); isDraggingRef.current = false
       setElements((cur) => { pushUndo(multiOrigSnapRef.current ?? cur); scheduleSave(cur); return cur })
       multiOrigRef.current = null; dragStartRef.current = null; multiOrigSnapRef.current = null
     }
     if (isResizing) {
-      setIsResizing(false)
+      setIsResizing(false); isResizingRef.current = false
       setElements((cur) => { pushUndo(resizeSnapRef.current ?? cur); scheduleSave(cur); return cur })
       resizeRef.current = null; resizeSnapRef.current = null
     }
@@ -529,6 +625,9 @@ export default function BoardCanvas() {
     setElements((p) => { pushUndo(p); const next = [...p, el]; scheduleSave(next); return next })
   }
   function deleteElements(ids: string[]) {
+    // 삭제 ID를 명시적으로 추적 → save 시 서버에 전달
+    const merged = deletedIdsRef.current.concat(ids)
+    deletedIdsRef.current = merged.filter((id, i) => merged.indexOf(id) === i) // dedupe
     setElements((p) => { pushUndo(p); const next = p.filter((el) => !ids.includes(el.id)); scheduleSave(next); return next })
     setSelectedIds([]); setEditingId(null)
   }
@@ -540,7 +639,18 @@ export default function BoardCanvas() {
   }
   function undo() {
     const prev = undoStack.current.pop(); if (!prev) return
-    setElements((cur) => { redoStack.current.push(cur); scheduleSave(prev); return prev })
+    setElements((cur) => {
+      redoStack.current.push(cur)
+      // undo로 복원되는 요소(삭제 취소)는 deletedIdsRef에서 제거
+      const curIdSet = new Set(cur.map((e) => e.id))
+      const restored = prev.filter((e) => !curIdSet.has(e.id)).map((e) => e.id)
+      if (restored.length > 0) {
+        const restoredSet = new Set(restored)
+        deletedIdsRef.current = deletedIdsRef.current.filter((id) => !restoredSet.has(id))
+      }
+      scheduleSave(prev)
+      return prev
+    })
     setSelectedIds([])
   }
   function redo() {
@@ -558,7 +668,7 @@ export default function BoardCanvas() {
       : (selectedIds.includes(el.id) ? selectedIds : [el.id])
     setSelectedIds(newSel)
     if (editingId === el.id) return
-    setIsDragging(true)
+    setIsDragging(true); isDraggingRef.current = true
     dragStartRef.current = { clientX: e.clientX, clientY: e.clientY }
     const ids = newSel.includes(el.id) ? newSel : [el.id]
     multiOrigRef.current = new Map(elements.filter((e2) => ids.includes(e2.id)).map((e2) => [e2.id, { x: e2.x, y: e2.y }]))
@@ -569,7 +679,7 @@ export default function BoardCanvas() {
 
   function onResizePointerDown(e: React.PointerEvent, el: BoardElement, corner: string) {
     e.stopPropagation()
-    setIsResizing(true)
+    setIsResizing(true); isResizingRef.current = true
     resizeRef.current = { corner, startX: e.clientX, startY: e.clientY, origX: el.x, origY: el.y, origW: el.width, origH: el.height }
     resizeSnapRef.current = elements
     ;(e.currentTarget as HTMLElement).setPointerCapture(e.pointerId)
@@ -610,9 +720,13 @@ export default function BoardCanvas() {
   const presenceOthers = useMemo(() => Object.values(presence).filter((u) => u.userId !== session?.user?.id), [presence, session?.user?.id])
 
   // Stable callbacks for CanvasElement to prevent re-renders
-  const handlePointerDown = useCallback((e: React.PointerEvent, el: BoardElement) => onElementPointerDown(e, el), []) // eslint-disable-line react-hooks/exhaustive-deps
-  const handleResizeDown  = useCallback((e: React.PointerEvent, el: BoardElement, c: string) => onResizePointerDown(e, el, c), []) // eslint-disable-line react-hooks/exhaustive-deps
-  const handleContentChange = useCallback((id: string, v: string) => updateElement(id, { content: v }), []) // eslint-disable-line react-hooks/exhaustive-deps
+  // "Ref pattern": update ref every render so useCallback([], []) always reads fresh functions
+  const handlersRef = useRef({ onElementPointerDown, onResizePointerDown, updateElement })
+  handlersRef.current = { onElementPointerDown, onResizePointerDown, updateElement }
+
+  const handlePointerDown    = useCallback((e: React.PointerEvent, el: BoardElement) => handlersRef.current.onElementPointerDown(e, el), []) // eslint-disable-line react-hooks/exhaustive-deps
+  const handleResizeDown     = useCallback((e: React.PointerEvent, el: BoardElement, c: string) => handlersRef.current.onResizePointerDown(e, el, c), []) // eslint-disable-line react-hooks/exhaustive-deps
+  const handleContentChange  = useCallback((id: string, v: string) => handlersRef.current.updateElement(id, { content: v }), []) // eslint-disable-line react-hooks/exhaustive-deps
   const handleEditEnd = useCallback(() => setEditingId(null), [])
 
   if (loading) return (
@@ -633,7 +747,8 @@ export default function BoardCanvas() {
     : tool === 'pen' ? 'cursor-crosshair' : tool === 'select' ? 'cursor-default' : 'cursor-crosshair'
 
   return (
-    <div className="fixed inset-0 flex flex-col bg-background overflow-hidden" style={{ top: 0 }}>
+    <div className="fixed inset-0 flex flex-col bg-background overflow-hidden" style={{ top: 0, WebkitUserSelect: 'none', WebkitTouchCallout: 'none' } as React.CSSProperties}
+      onContextMenu={(e) => e.preventDefault()}>
 
       {/* ── Top Bar ── */}
       <div className="flex items-center justify-between h-12 px-4 bg-surface border-b border-border shrink-0 z-30">
@@ -886,10 +1001,17 @@ export default function BoardCanvas() {
       {/* ── Canvas ── */}
       <div ref={wrapperRef}
         className={`flex-1 relative overflow-hidden select-none ${cursor} bg-surface-2`}
-        style={{ touchAction: 'none' }}
+        style={{
+          touchAction: 'none',
+          WebkitUserSelect: 'none',
+          WebkitTouchCallout: 'none', // iOS 손바닥 터치 시 복사/붙여넣기 팝업 방지
+          userSelect: 'none',
+        } as React.CSSProperties}
+        onContextMenu={(e) => e.preventDefault()}  // 길게 눌러도 컨텍스트 메뉴 안 뜸
         onPointerDown={onCanvasPointerDown}
         onPointerMove={onCanvasPointerMove}
         onPointerUp={onCanvasPointerUp}
+        onPointerCancel={onCanvasPointerUp}
         onWheel={handleWheel}
         onTouchStart={onTouchStart}
         onTouchMove={onTouchMove}

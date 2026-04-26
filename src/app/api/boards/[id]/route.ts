@@ -40,13 +40,14 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
     return NextResponse.json({ error: '권한이 없습니다' }, { status: 403 })
   }
 
-  const { name, description, isPublic } = await req.json()
+  const { name, description, isPublic, coverImage } = await req.json()
   const updated = await prisma.board.update({
     where: { id: params.id },
     data: {
       ...(name !== undefined && { name: name.trim() }),
       ...(description !== undefined && { description: description.trim() }),
       ...(isPublic !== undefined && { isPublic }),
+      ...(coverImage !== undefined && { coverImage: coverImage || null }),
     },
   })
 

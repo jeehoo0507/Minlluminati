@@ -1,15 +1,16 @@
 'use client'
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import Link from 'next/link'
 import { useSession } from 'next-auth/react'
 import { Avatar } from '@/components/ui/Avatar'
 import { timeAgo } from '@/lib/utils'
-import { Plus, Layout, Globe, Lock, Layers, Trash2, Settings, X, UserPlus, Save, Users } from 'lucide-react'
+import { Plus, Layout, Globe, Lock, Layers, Trash2, Settings, X, UserPlus, Save, Users, Image as ImageIcon, Upload } from 'lucide-react'
 import toast from 'react-hot-toast'
 
 interface BoardMember { id: string; userId: string; role: string; user: { id: string; name?: string | null; image?: string | null } }
 interface Board {
   id: string; name: string; description: string; isPublic: boolean
+  coverImage?: string | null
   createdAt: string; updatedAt: string; ownerId: string
   owner: { id: string; name?: string | null; image?: string | null }
   members?: BoardMember[]
@@ -32,10 +33,13 @@ export default function BoardsPage() {
   const [settingsName, setSettingsName] = useState('')
   const [settingsDesc, setSettingsDesc] = useState('')
   const [settingsPublic, setSettingsPublic] = useState(true)
+  const [settingsCover, setSettingsCover] = useState<string | null>(null)
   const [settingsMembers, setSettingsMembers] = useState<BoardMember[]>([])
   const [inviteQuery, setInviteQuery] = useState('')
   const [inviting, setInviting] = useState(false)
   const [savingSettings, setSavingSettings] = useState(false)
+  const [uploadingCover, setUploadingCover] = useState(false)
+  const coverInputRef = useRef<HTMLInputElement>(null)
 
   const load = useCallback(() => {
     fetch('/api/boards')
@@ -83,13 +87,27 @@ export default function BoardsPage() {
     setSettingsName(board.name)
     setSettingsDesc(board.description)
     setSettingsPublic(board.isPublic)
+    setSettingsCover(board.coverImage ?? null)
     setInviteQuery('')
-    // Fetch full board info with members
     const res = await fetch(`/api/boards/${board.id}`)
     if (res.ok) {
       const data = await res.json()
       setSettingsMembers(data.members ?? [])
+      setSettingsCover(data.coverImage ?? null)
     }
+  }
+
+  async function uploadCover(file: File) {
+    setUploadingCover(true)
+    const fd = new FormData(); fd.append('file', file)
+    const res = await fetch('/api/upload', { method: 'POST', body: fd })
+    if (res.ok) {
+      const { url } = await res.json()
+      setSettingsCover(url)
+    } else {
+      toast.error('이미지 업로드 실패')
+    }
+    setUploadingCover(false)
   }
 
   async function saveSettings() {
@@ -98,7 +116,12 @@ export default function BoardsPage() {
     const res = await fetch(`/api/boards/${settingsBoard.id}`, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ name: settingsName, description: settingsDesc, isPublic: settingsPublic }),
+      body: JSON.stringify({
+        name: settingsName,
+        description: settingsDesc,
+        isPublic: settingsPublic,
+        coverImage: settingsCover,
+      }),
     })
     if (res.ok) {
       const updated = await res.json()
@@ -210,9 +233,50 @@ export default function BoardsPage() {
               <h2 className="text-base font-bold text-text-primary">보드 설정</h2>
               <button onClick={() => setSettingsBoard(null)} className="text-muted hover:text-text-secondary"><X size={16} /></button>
             </div>
-            <div className="p-5 space-y-4 max-h-[70vh] overflow-y-auto">
+            <div className="p-5 space-y-4 max-h-[75vh] overflow-y-auto">
+
+              {/* ── 표지 이미지 ── */}
+              <div>
+                <label className="block text-xs font-semibold text-text-secondary mb-2">표지 이미지</label>
+                <div className="relative w-full h-32 rounded-xl overflow-hidden border border-border bg-surface-2 group">
+                  {settingsCover ? (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img src={settingsCover} alt="cover" className="w-full h-full object-cover" />
+                  ) : (
+                    <div className="w-full h-full flex flex-col items-center justify-center gap-1.5 text-muted">
+                      <ImageIcon size={28} />
+                      <span className="text-xs">표지 이미지 없음</span>
+                    </div>
+                  )}
+                  {/* Overlay buttons */}
+                  <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-2">
+                    <button
+                      onClick={() => coverInputRef.current?.click()}
+                      disabled={uploadingCover}
+                      className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-white/90 text-gray-900 text-xs font-semibold hover:bg-white transition-colors disabled:opacity-60">
+                      <Upload size={13} /> {uploadingCover ? '업로드 중...' : '이미지 선택'}
+                    </button>
+                    {settingsCover && (
+                      <button
+                        onClick={() => setSettingsCover(null)}
+                        className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-red-500/80 text-white text-xs font-semibold hover:bg-red-500 transition-colors">
+                        <X size={12} /> 제거
+                      </button>
+                    )}
+                  </div>
+                </div>
+                <input
+                  ref={coverInputRef}
+                  type="file"
+                  accept="image/*"
+                  className="hidden"
+                  onChange={(e) => { const f = e.target.files?.[0]; if (f) uploadCover(f); e.target.value = '' }}
+                />
+                <p className="text-[11px] text-muted mt-1.5">보드 목록에서 카드 상단에 표시됩니다</p>
+              </div>
+
               {/* Basic info */}
-              <div className="space-y-3">
+              <div className="space-y-3 border-t border-border pt-4">
                 <div>
                   <label className="block text-xs font-semibold text-text-secondary mb-1">보드 이름</label>
                   <input value={settingsName} onChange={(e) => setSettingsName(e.target.value)}
@@ -277,7 +341,7 @@ export default function BoardsPage() {
 
             <div className="flex gap-2 px-5 py-4 border-t border-border">
               <button onClick={() => setSettingsBoard(null)} className="flex-1 py-2 rounded-lg border border-border text-sm text-text-secondary hover:bg-surface-2 transition-colors">취소</button>
-              <button onClick={saveSettings} disabled={savingSettings}
+              <button onClick={saveSettings} disabled={savingSettings || uploadingCover}
                 className="flex-1 flex items-center justify-center gap-1.5 py-2 rounded-lg bg-accent text-white text-sm font-semibold hover:bg-accent-dim transition-colors disabled:opacity-50">
                 <Save size={13} /> {savingSettings ? '저장 중...' : '저장'}
               </button>
@@ -337,13 +401,28 @@ function BoardCard({ board, isMine, canManage, onDelete, onSettings }: {
   onDelete: () => void; onSettings: () => void
 }) {
   return (
-    <div className="relative group">
+    <div className="relative group rounded-xl overflow-hidden border border-border hover:border-accent/40 bg-surface transition-all">
       <Link href={`/boards/${board.id}`} className="block">
-        <div className="flex items-center gap-4 px-4 py-3.5 bg-surface border border-border rounded-xl hover:border-accent/40 hover:bg-surface-2 transition-all">
-          {/* Icon */}
-          <div className="w-10 h-10 rounded-lg bg-accent/10 flex items-center justify-center shrink-0 group-hover:bg-accent/20 transition-colors">
-            <Layers size={18} className="text-accent" />
+
+        {/* Cover image — 표지 있을 때만 */}
+        {board.coverImage && (
+          <div className="w-full h-28 overflow-hidden">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              src={board.coverImage}
+              alt="cover"
+              className="w-full h-full object-cover group-hover:scale-[1.02] transition-transform duration-300"
+            />
           </div>
+        )}
+
+        <div className={`flex items-center gap-4 px-4 py-3.5 hover:bg-surface-2 transition-colors ${board.coverImage ? '' : ''}`}>
+          {/* Icon — 표지 없을 때만 */}
+          {!board.coverImage && (
+            <div className="w-10 h-10 rounded-lg bg-accent/10 flex items-center justify-center shrink-0 group-hover:bg-accent/20 transition-colors">
+              <Layers size={18} className="text-accent" />
+            </div>
+          )}
 
           {/* Info */}
           <div className="flex-1 min-w-0">
@@ -378,18 +457,18 @@ function BoardCard({ board, isMine, canManage, onDelete, onSettings }: {
         </div>
       </Link>
 
-      {/* Settings & Delete buttons — top right, above the link */}
+      {/* Settings & Delete buttons */}
       {canManage && (
-        <div className="absolute right-3 top-1/2 -translate-y-1/2 flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity z-10">
+        <div className="absolute right-3 top-3 flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity z-10">
           <button
             onClick={(e) => { e.preventDefault(); e.stopPropagation(); onSettings() }}
-            className="p-1.5 rounded-lg bg-surface-2 border border-border text-muted hover:text-text-primary hover:border-accent/40 transition-colors"
+            className="p-1.5 rounded-lg bg-surface/80 backdrop-blur-sm border border-border text-muted hover:text-text-primary hover:border-accent/40 transition-colors"
             title="설정">
             <Settings size={13} />
           </button>
           <button
             onClick={(e) => { e.preventDefault(); e.stopPropagation(); onDelete() }}
-            className="p-1.5 rounded-lg bg-surface-2 border border-border text-muted hover:text-red-400 hover:border-red-400/40 transition-colors"
+            className="p-1.5 rounded-lg bg-surface/80 backdrop-blur-sm border border-border text-muted hover:text-red-400 hover:border-red-400/40 transition-colors"
             title="삭제">
             <Trash2 size={13} />
           </button>
