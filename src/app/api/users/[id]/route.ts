@@ -109,6 +109,22 @@ export async function GET(_: NextRequest, { params }: { params: { id: string } }
   })
   const solvedProblems = solvedSubmissions.map((s) => s.problem)
 
+  // Bookmarked problems (본인 프로필에서만)
+  const isOwn = session?.user?.id === userId
+  const bookmarkedProblems = isOwn
+    ? await prisma.problemBookmark.findMany({
+        where: { userId },
+        select: { problem: { select: { id: true, problemNumber: true, title: true, subject: true, approvedPts: true } }, createdAt: true },
+        orderBy: { createdAt: 'desc' },
+      }).then((bs) => bs.map((b) => b.problem))
+    : []
+
+  // Equipped banner
+  const equippedBanner = await prisma.userBanner.findFirst({
+    where: { userId, isEquipped: true },
+    include: { bannerItem: true },
+  })
+
   // Rivals info
   const myRivals = session?.user
     ? await prisma.rival.findMany({ where: { userId: session.user.id }, select: { rivalId: true } })
@@ -140,9 +156,11 @@ export async function GET(_: NextRequest, { params }: { params: { id: string } }
     pointTimeline,
     radarData,
     solvedProblems,
+    bookmarkedProblems,
     isRival,
     isMaster,
     isFirstRuby,
     rivals: rivals.map((r) => r.rival),
+    equippedBanner: equippedBanner?.bannerItem ?? null,
   })
 }

@@ -50,6 +50,8 @@ model User {
   problems         Problem[]           @relation("UserProblems")
   problemSubs      ProblemSubmission[] @relation("UserProblemSubs")
   problemSolutions ProblemSolution[]   @relation("UserProblemSols")
+  problemBookmarks ProblemBookmark[]
+  difficultyVotes  DifficultyVote[]
   solutionComments SolutionComment[]   @relation("UserSolComments")
   problemSets      ProblemSet[]        @relation("UserProblemSets")
   contestContributions ContestContributor[] @relation("ContestContributors")
@@ -71,6 +73,12 @@ model User {
   // Boards
   ownedBoards      Board[]       @relation("BoardOwner")
   boardMemberships BoardMember[]
+
+  // Shop
+  shopPoints         Int                @default(0)
+  streakShieldsOwned Int                @default(0)
+  streakShields      StreakShieldUsage[]
+  userBanners        UserBanner[]
 
   @@map("users")
 }
@@ -353,8 +361,37 @@ model Problem {
   solutions   ProblemSolution[]
   setItems    ProblemSetItem[]
   essaySubmissions ProblemEssaySubmission[]
+  bookmarks        ProblemBookmark[]
+  difficultyVotes  DifficultyVote[]
 
   @@map("problems")
+}
+
+model ProblemBookmark {
+  id        String   @id @default(cuid())
+  userId    String
+  problemId String
+  createdAt DateTime @default(now())
+
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  problem Problem @relation(fields: [problemId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, problemId])
+  @@map("problem_bookmarks")
+}
+
+model DifficultyVote {
+  id         String   @id @default(cuid())
+  userId     String
+  problemId  String
+  difficulty Int      // 1~5
+  createdAt  DateTime @default(now())
+
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  problem Problem @relation(fields: [problemId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, problemId])
+  @@map("difficulty_votes")
 }
 
 model ProblemSubmission {
@@ -492,6 +529,9 @@ model StudySession {
   userId    String
   duration  Int      // seconds
   date      String   // YYYY-MM-DD (KST)
+  subject   String?  // 과목 태그 (선택)
+  memo      String?  // 세션 메모 (선택)
+  startedAt DateTime @default(now())
   user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   createdAt DateTime @default(now())
 
@@ -638,6 +678,46 @@ model Rival {
 
   @@unique([userId, rivalId])
   @@map("rivals")
+}
+
+// ───────────────────────────── Shop ─────────────────────────────
+
+model StreakShieldUsage {
+  id        String   @id @default(cuid())
+  userId    String
+  date      String   // YYYY-MM-DD — day that was protected
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+
+  @@unique([userId, date])
+  @@map("streak_shield_usages")
+}
+
+model BannerItem {
+  id          String       @id @default(cuid())
+  name        String
+  description String       @default("")
+  imageUrl    String
+  price       Int
+  isActive    Boolean      @default(true)
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+  userBanners UserBanner[]
+
+  @@map("banner_items")
+}
+
+model UserBanner {
+  id           String     @id @default(cuid())
+  userId       String
+  bannerItemId String
+  isEquipped   Boolean    @default(false)
+  purchasedAt  DateTime   @default(now())
+  user         User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  bannerItem   BannerItem @relation(fields: [bannerItemId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, bannerItemId])
+  @@map("user_banners")
 }
 
 model PointHistory {

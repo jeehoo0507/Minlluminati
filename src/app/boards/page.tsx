@@ -1,10 +1,10 @@
 'use client'
-import { useState, useEffect, useCallback, useRef } from 'react'
+import { useState, useEffect, useCallback, useRef, type ReactNode } from 'react'
 import Link from 'next/link'
 import { useSession } from 'next-auth/react'
 import { Avatar } from '@/components/ui/Avatar'
 import { timeAgo } from '@/lib/utils'
-import { Plus, Layout, Globe, Lock, Layers, Trash2, Settings, X, UserPlus, Save, Users, Image as ImageIcon, Upload } from 'lucide-react'
+import { Plus, Layout, Globe, Lock, Layers, Trash2, Settings, X, UserPlus, Save, Users, Image as ImageIcon, Upload, GitBranch, Columns, BookOpen } from 'lucide-react'
 import toast from 'react-hot-toast'
 
 interface BoardMember { id: string; userId: string; role: string; user: { id: string; name?: string | null; image?: string | null } }
@@ -26,6 +26,7 @@ export default function BoardsPage() {
   const [newName, setNewName] = useState('')
   const [newDesc, setNewDesc] = useState('')
   const [newPublic, setNewPublic] = useState(true)
+  const [newTemplate, setNewTemplate] = useState<'blank' | 'mindmap' | 'kanban' | 'notes'>('blank')
   const [creating, setCreating] = useState(false)
 
   // Settings modal state
@@ -50,6 +51,37 @@ export default function BoardsPage() {
 
   useEffect(() => { load() }, [load])
 
+  const TEMPLATES: Record<string, { label: string; icon: ReactNode; elements: object[] }> = {
+    blank:   { label: '빈 보드', icon: <Layout size={14} />, elements: [] },
+    mindmap: { label: '마인드맵', icon: <GitBranch size={14} />, elements: [
+      { id: 'tm-c',  type: 'shape', x: 460, y: 280, width: 160, height: 60, content: '중심 주제', zIndex: 1, style: JSON.stringify({ shape: 'rounded', fill: '#3b82f6', stroke: '#2563eb', textColor: '#ffffff', fontSize: 16, fontWeight: 'bold' }) },
+      { id: 'tm-1',  type: 'shape', x: 180, y: 160, width: 130, height: 50, content: '가지 1', zIndex: 1, style: JSON.stringify({ shape: 'rounded', fill: '#10b981', stroke: '#059669', textColor: '#ffffff', fontSize: 14 }) },
+      { id: 'tm-2',  type: 'shape', x: 180, y: 290, width: 130, height: 50, content: '가지 2', zIndex: 1, style: JSON.stringify({ shape: 'rounded', fill: '#10b981', stroke: '#059669', textColor: '#ffffff', fontSize: 14 }) },
+      { id: 'tm-3',  type: 'shape', x: 180, y: 420, width: 130, height: 50, content: '가지 3', zIndex: 1, style: JSON.stringify({ shape: 'rounded', fill: '#10b981', stroke: '#059669', textColor: '#ffffff', fontSize: 14 }) },
+      { id: 'tm-4',  type: 'shape', x: 770, y: 160, width: 130, height: 50, content: '가지 4', zIndex: 1, style: JSON.stringify({ shape: 'rounded', fill: '#f59e0b', stroke: '#d97706', textColor: '#ffffff', fontSize: 14 }) },
+      { id: 'tm-5',  type: 'shape', x: 770, y: 290, width: 130, height: 50, content: '가지 5', zIndex: 1, style: JSON.stringify({ shape: 'rounded', fill: '#f59e0b', stroke: '#d97706', textColor: '#ffffff', fontSize: 14 }) },
+      { id: 'tm-6',  type: 'shape', x: 770, y: 420, width: 130, height: 50, content: '가지 6', zIndex: 1, style: JSON.stringify({ shape: 'rounded', fill: '#f59e0b', stroke: '#d97706', textColor: '#ffffff', fontSize: 14 }) },
+    ]},
+    kanban: { label: '칸반보드', icon: <Columns size={14} />, elements: [
+      { id: 'kb-h1', type: 'shape', x: 40,  y: 40, width: 220, height: 50, content: '📋 할 일', zIndex: 1, style: JSON.stringify({ shape: 'rounded', fill: '#6b7280', stroke: '#4b5563', textColor: '#ffffff', fontSize: 15, fontWeight: 'bold' }) },
+      { id: 'kb-h2', type: 'shape', x: 280, y: 40, width: 220, height: 50, content: '🔄 진행 중', zIndex: 1, style: JSON.stringify({ shape: 'rounded', fill: '#3b82f6', stroke: '#2563eb', textColor: '#ffffff', fontSize: 15, fontWeight: 'bold' }) },
+      { id: 'kb-h3', type: 'shape', x: 520, y: 40, width: 220, height: 50, content: '✅ 완료', zIndex: 1, style: JSON.stringify({ shape: 'rounded', fill: '#10b981', stroke: '#059669', textColor: '#ffffff', fontSize: 15, fontWeight: 'bold' }) },
+      { id: 'kb-t1', type: 'sticker', x: 50,  y: 110, width: 200, height: 80, content: '할 일 카드 1', zIndex: 2, style: JSON.stringify({ bg: '#fef9c3', textColor: '#713f12', fontSize: 13 }) },
+      { id: 'kb-t2', type: 'sticker', x: 50,  y: 210, width: 200, height: 80, content: '할 일 카드 2', zIndex: 2, style: JSON.stringify({ bg: '#fef9c3', textColor: '#713f12', fontSize: 13 }) },
+      { id: 'kb-t3', type: 'sticker', x: 290, y: 110, width: 200, height: 80, content: '진행 중인 작업', zIndex: 2, style: JSON.stringify({ bg: '#dbeafe', textColor: '#1e3a8a', fontSize: 13 }) },
+    ]},
+    notes: { label: '수업 노트', icon: <BookOpen size={14} />, elements: [
+      { id: 'nt-title', type: 'text', x: 100, y: 40,  width: 600, height: 60,  content: '📚 수업 노트',        zIndex: 1, style: JSON.stringify({ fontSize: 28, fontWeight: 'bold', color: '#3b82f6' }) },
+      { id: 'nt-date',  type: 'text', x: 100, y: 100, width: 200, height: 30,  content: new Date().toLocaleDateString('ko-KR'), zIndex: 1, style: JSON.stringify({ fontSize: 13, color: '#6b7280' }) },
+      { id: 'nt-h1',    type: 'text', x: 100, y: 150, width: 600, height: 36,  content: '🎯 학습 목표',        zIndex: 1, style: JSON.stringify({ fontSize: 18, fontWeight: 'bold', color: '#1f2937' }) },
+      { id: 'nt-c1',    type: 'text', x: 100, y: 190, width: 600, height: 80,  content: '오늘 배울 내용을 적어보세요', zIndex: 1, style: JSON.stringify({ fontSize: 14, color: '#374151' }) },
+      { id: 'nt-h2',    type: 'text', x: 100, y: 290, width: 600, height: 36,  content: '📝 핵심 개념',        zIndex: 1, style: JSON.stringify({ fontSize: 18, fontWeight: 'bold', color: '#1f2937' }) },
+      { id: 'nt-c2',    type: 'text', x: 100, y: 330, width: 600, height: 120, content: '중요한 개념을 정리하세요', zIndex: 1, style: JSON.stringify({ fontSize: 14, color: '#374151' }) },
+      { id: 'nt-h3',    type: 'text', x: 100, y: 470, width: 600, height: 36,  content: '❓ 질문 & 메모',       zIndex: 1, style: JSON.stringify({ fontSize: 18, fontWeight: 'bold', color: '#1f2937' }) },
+      { id: 'nt-c3',    type: 'text', x: 100, y: 510, width: 600, height: 100, content: '궁금한 점이나 추가 메모를 적어보세요', zIndex: 1, style: JSON.stringify({ fontSize: 14, color: '#374151' }) },
+    ]},
+  }
+
   async function createBoard() {
     if (!newName.trim()) return toast.error('보드 이름을 입력해주세요')
     setCreating(true)
@@ -60,9 +92,17 @@ export default function BoardsPage() {
     })
     if (res.ok) {
       const board = await res.json()
+      // 템플릿 요소 적용
+      const tmpl = TEMPLATES[newTemplate]
+      if (tmpl.elements.length > 0) {
+        await fetch(`/api/boards/${board.id}/elements`, {
+          method: 'PUT', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ elements: tmpl.elements, deletedIds: [] }),
+        }).catch(() => {})
+      }
       setBoards((p) => [board, ...p])
       setMyBoardIds((p) => [...p, board.id])
-      setShowNew(false); setNewName(''); setNewDesc('')
+      setShowNew(false); setNewName(''); setNewDesc(''); setNewTemplate('blank')
       toast.success('보드가 생성됐습니다!')
     } else {
       toast.error((await res.json()).error ?? '생성 실패')
@@ -197,6 +237,19 @@ export default function BoardsPage() {
           <div className="bg-surface border border-border rounded-2xl p-6 w-full max-w-md mx-4 shadow-2xl" onClick={(e) => e.stopPropagation()}>
             <h2 className="text-lg font-bold text-text-primary mb-4">새 보드 만들기</h2>
             <div className="space-y-3">
+              {/* 템플릿 선택 */}
+              <div>
+                <label className="block text-xs font-semibold text-text-secondary mb-2">템플릿</label>
+                <div className="grid grid-cols-2 gap-2">
+                  {(Object.entries(TEMPLATES) as [string, typeof TEMPLATES[string]][]).map(([key, tmpl]) => (
+                    <button key={key} onClick={() => setNewTemplate(key as typeof newTemplate)}
+                      className={`flex items-center gap-2 px-3 py-2.5 rounded-lg border text-sm text-left transition-all ${newTemplate === key ? 'border-accent bg-accent/10 text-accent' : 'border-border text-text-secondary hover:border-accent/40 hover:bg-surface-2'}`}>
+                      {tmpl.icon}
+                      <span className="font-medium">{tmpl.label}</span>
+                    </button>
+                  ))}
+                </div>
+              </div>
               <div>
                 <label className="block text-xs font-semibold text-text-secondary mb-1">보드 이름 *</label>
                 <input autoFocus value={newName} onChange={(e) => setNewName(e.target.value)}

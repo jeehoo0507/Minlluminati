@@ -1,5 +1,5 @@
 'use client'
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useSession } from 'next-auth/react'
 import { useRouter } from 'next/navigation'
 import { Avatar } from '@/components/ui/Avatar'
@@ -7,7 +7,7 @@ import { TierBadge } from '@/components/ui/TierBadge'
 import { AdminConfirmModal } from '@/components/ui/AdminConfirmModal'
 import { timeAgo } from '@/lib/utils'
 import Link from 'next/link'
-import { UserPlus, Trash2, Shield, ShieldOff, CheckCircle, XCircle, Swords, Pencil, RotateCcw, Sliders, Bell } from 'lucide-react'
+import { UserPlus, Trash2, Shield, ShieldOff, CheckCircle, XCircle, Swords, Pencil, RotateCcw, Sliders, Bell, ShoppingBag, Plus, X } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { TIERS } from '@/lib/scoring'
 
@@ -74,6 +74,17 @@ export default function AdminPage() {
   const [noticeSending, setNoticeSending] = useState(false)
   const [allGroups, setAllGroups] = useState<{ id: string; name: string; isPublic: boolean; createdAt: string; owner: { id: string; name?: string | null; email: string }; _count: { members: number; posts: number } }[]>([])
 
+  // Shop state
+  const [shopBanners, setShopBanners] = useState<{ id: string; name: string; description: string; imageUrl: string; price: number; isActive: boolean }[]>([])
+  const [shieldPrice, setShieldPrice] = useState(30)
+  const [newBanner, setNewBanner] = useState({ name: '', description: '', imageUrl: '', price: 0 })
+  const [bannerSaving, setBannerSaving] = useState(false)
+  const [shopAdjUser, setShopAdjUser] = useState('')
+  const [shopAdjDelta, setShopAdjDelta] = useState('')
+  const [shopAdjLoading, setShopAdjLoading] = useState(false)
+  const [bannerUploading, setBannerUploading] = useState(false)
+  const bannerFileRef = useRef<HTMLInputElement>(null)
+
   useEffect(() => {
     if (status === 'loading') return
     if (session?.user?.role !== 'ADMIN') { router.replace('/feed'); return }
@@ -115,6 +126,82 @@ export default function AdminPage() {
   async function loadAllGroups() {
     const res = await fetch('/api/admin/groups')
     if (res.ok) setAllGroups(await res.json())
+  }
+
+  async function loadShopAdmin() {
+    const res = await fetch('/api/admin/shop')
+    if (res.ok) { const d = await res.json(); setShopBanners(d.banners); setShieldPrice(d.shieldPrice) }
+  }
+
+  async function saveShieldPrice() {
+    const res = await fetch('/api/admin/shop', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'setShieldPrice', price: shieldPrice }),
+    })
+    if (res.ok) toast.success('보호막 가격 저장 완료')
+    else toast.error('저장 실패')
+  }
+
+  async function handleBannerImageUpload(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0]; if (!file) return
+    setBannerUploading(true)
+    try {
+      const fd = new FormData(); fd.append('file', file)
+      const res = await fetch('/api/upload', { method: 'POST', body: fd })
+      if (!res.ok) { toast.error('업로드 실패'); return }
+      const data = await res.json()
+      setNewBanner((p) => ({ ...p, imageUrl: data.url }))
+      toast.success('이미지 업로드 완료')
+    } finally {
+      setBannerUploading(false)
+      if (bannerFileRef.current) bannerFileRef.current.value = ''
+    }
+  }
+
+  async function createBanner() {
+    if (!newBanner.name || !newBanner.imageUrl || !newBanner.price) { toast.error('이름, 이미지 URL, 가격 필수'); return }
+    setBannerSaving(true)
+    try {
+      const res = await fetch('/api/admin/shop', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(newBanner),
+      })
+      if (res.ok) { toast.success('배너 생성 완료'); setNewBanner({ name: '', description: '', imageUrl: '', price: 0 }); loadShopAdmin() }
+      else toast.error('생성 실패')
+    } finally { setBannerSaving(false) }
+  }
+
+  async function deleteBanner(id: string) {
+    const res = await fetch('/api/admin/shop', {
+      method: 'DELETE', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id }),
+    })
+    if (res.ok) { toast.success('삭제 완료'); loadShopAdmin() }
+    else toast.error('삭제 실패')
+  }
+
+  async function toggleBannerActive(id: string, isActive: boolean) {
+    const res = await fetch('/api/admin/shop', {
+      method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id, isActive }),
+    })
+    if (res.ok) loadShopAdmin()
+    else toast.error('수정 실패')
+  }
+
+  async function adjustShopPoints() {
+    const delta = parseInt(shopAdjDelta)
+    if (!shopAdjUser || isNaN(delta)) { toast.error('유저 ID와 수치 필요'); return }
+    setShopAdjLoading(true)
+    try {
+      const res = await fetch('/api/admin/shop', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'adjustPoints', userId: shopAdjUser, delta }),
+      })
+      const d = await res.json()
+      if (res.ok) { toast.success(`상점 포인트 조정 완료 → ${d.newShopPoints}p`); setShopAdjUser(''); setShopAdjDelta('') }
+      else toast.error(d.error ?? '오류')
+    } finally { setShopAdjLoading(false) }
   }
 
   function confirmDeleteGroup(group: { id: string; name: string }) {
@@ -419,6 +506,7 @@ export default function AdminPage() {
     { key: 'tiers', label: '티어 설정' },
     { key: 'daily', label: '일일 현황' },
     { key: 'notice', label: '공지 발송' },
+    { key: 'shop', label: '상점 관리' },
     ...(isOwner ? [{ key: 'reset', label: '⚠️ 초기화' }] : []),
   ]
 
@@ -454,6 +542,7 @@ export default function AdminPage() {
               if (key === 'tiers') loadTierConfig()
               if (key === 'daily') loadDailyStatus()
               if (key === 'emaillist') loadAllowedEmails()
+              if (key === 'shop') loadShopAdmin()
             }}
             className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${tab === key ? 'bg-accent text-background' : 'text-text-secondary hover:text-text-primary'}`}
           >
@@ -987,6 +1076,106 @@ export default function AdminPage() {
 
           {!dailyStatus && !dailyLoading && (
             <div className="text-center py-12 text-text-secondary text-sm">새로고침을 눌러 현황을 확인하세요</div>
+          )}
+        </div>
+      )}
+
+      {/* Shop management */}
+      {tab === 'shop' && (
+        <div className="space-y-5">
+          {/* Shield price */}
+          <div className="bg-surface border border-border rounded-2xl p-6 space-y-4">
+            <h2 className="text-sm font-semibold text-text-primary flex items-center gap-2"><ShoppingBag size={15} /> 보호막 가격 설정</h2>
+            <div className="flex items-center gap-3">
+              <input type="number" min={1} value={shieldPrice} onChange={(e) => setShieldPrice(Number(e.target.value))}
+                className="w-28 bg-background border border-border rounded-lg px-3 py-2 text-sm text-text-primary focus:outline-none focus:border-accent" />
+              <span className="text-sm text-muted">상점 포인트</span>
+              <button onClick={saveShieldPrice}
+                className="px-4 py-2 rounded-lg bg-accent text-background text-sm font-semibold hover:bg-accent-dim transition-colors">
+                저장
+              </button>
+            </div>
+          </div>
+
+          {/* Give/take shop points */}
+          <div className="bg-surface border border-border rounded-2xl p-6 space-y-4">
+            <h2 className="text-sm font-semibold text-text-primary">상점 포인트 조정</h2>
+            <div className="flex flex-wrap gap-2">
+              <input value={shopAdjUser} onChange={(e) => setShopAdjUser(e.target.value)}
+                placeholder="유저 ID"
+                className="flex-1 min-w-40 bg-background border border-border rounded-lg px-3 py-2 text-sm text-text-primary focus:outline-none focus:border-accent" />
+              <input type="number" value={shopAdjDelta} onChange={(e) => setShopAdjDelta(e.target.value)}
+                placeholder="±포인트 (예: 50 또는 -20)"
+                className="w-40 bg-background border border-border rounded-lg px-3 py-2 text-sm text-text-primary focus:outline-none focus:border-accent" />
+              <button onClick={adjustShopPoints} disabled={shopAdjLoading}
+                className="px-4 py-2 rounded-lg bg-accent text-background text-sm font-semibold hover:bg-accent-dim transition-colors disabled:opacity-50">
+                {shopAdjLoading ? '...' : '조정'}
+              </button>
+            </div>
+            <p className="text-xs text-muted">유저 ID는 유저 목록에서 확인하거나 프로필 URL에서 복사하세요.</p>
+          </div>
+
+          {/* Banner CRUD */}
+          <div className="bg-surface border border-border rounded-2xl p-6 space-y-4">
+            <h2 className="text-sm font-semibold text-text-primary flex items-center gap-2"><Plus size={14} /> 배너 아이템 추가</h2>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <input value={newBanner.name} onChange={(e) => setNewBanner((p) => ({ ...p, name: e.target.value }))}
+                placeholder="배너 이름"
+                className="bg-background border border-border rounded-lg px-3 py-2 text-sm text-text-primary focus:outline-none focus:border-accent" />
+              <input type="number" min={1} value={newBanner.price || ''} onChange={(e) => setNewBanner((p) => ({ ...p, price: Number(e.target.value) }))}
+                placeholder="가격 (상점 포인트)"
+                className="bg-background border border-border rounded-lg px-3 py-2 text-sm text-text-primary focus:outline-none focus:border-accent" />
+              <div className="col-span-full">
+                <input ref={bannerFileRef} type="file" accept="image/*" className="hidden" onChange={handleBannerImageUpload} />
+                <button type="button" onClick={() => bannerFileRef.current?.click()} disabled={bannerUploading}
+                  className="w-full flex items-center justify-center gap-2 px-3 py-2 rounded-lg border border-dashed border-border text-sm text-text-secondary hover:text-text-primary hover:border-accent transition-colors disabled:opacity-50">
+                  <Plus size={14} />
+                  {bannerUploading ? '업로드 중...' : newBanner.imageUrl ? '이미지 변경' : '배너 이미지 업로드'}
+                </button>
+              </div>
+              <input value={newBanner.description} onChange={(e) => setNewBanner((p) => ({ ...p, description: e.target.value }))}
+                placeholder="설명 (선택)"
+                className="col-span-full bg-background border border-border rounded-lg px-3 py-2 text-sm text-text-primary focus:outline-none focus:border-accent" />
+            </div>
+            {newBanner.imageUrl && (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img src={newBanner.imageUrl} alt="preview" className="w-full h-20 object-cover rounded-lg border border-border" />
+            )}
+            <button onClick={createBanner} disabled={bannerSaving}
+              className="px-4 py-2 rounded-lg bg-accent text-background text-sm font-semibold hover:bg-accent-dim transition-colors disabled:opacity-50">
+              {bannerSaving ? '생성 중...' : '배너 생성'}
+            </button>
+          </div>
+
+          {/* Banner list */}
+          {shopBanners.length > 0 && (
+            <div className="bg-surface border border-border rounded-2xl overflow-hidden">
+              <div className="px-4 py-3 border-b border-border bg-surface-2">
+                <h3 className="text-sm font-semibold text-text-secondary">배너 목록 ({shopBanners.length})</h3>
+              </div>
+              <div className="divide-y divide-border">
+                {shopBanners.map((b) => (
+                  <div key={b.id} className="p-4 flex items-center gap-3">
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img src={b.imageUrl} alt={b.name} className="w-24 h-14 object-cover rounded-lg border border-border shrink-0" />
+                    <div className="flex-1 min-w-0">
+                      <p className="font-medium text-text-primary">{b.name}</p>
+                      <p className="text-xs text-muted">{b.price}p{b.description ? ` · ${b.description}` : ''}</p>
+                    </div>
+                    <div className="flex items-center gap-2 shrink-0">
+                      <button onClick={() => toggleBannerActive(b.id, !b.isActive)}
+                        className={`text-xs px-2 py-1 rounded-lg border transition-colors ${b.isActive ? 'border-emerald-500/30 text-emerald-500 bg-emerald-500/5' : 'border-border text-muted'}`}>
+                        {b.isActive ? '활성' : '비활성'}
+                      </button>
+                      <button onClick={() => deleteBanner(b.id)}
+                        className="p-1.5 rounded-lg text-muted hover:text-red-400 hover:bg-red-400/10 transition-colors">
+                        <X size={14} />
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
           )}
         </div>
       )}

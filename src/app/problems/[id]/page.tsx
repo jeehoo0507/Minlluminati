@@ -10,7 +10,7 @@ import { Avatar } from '@/components/ui/Avatar'
 import { TierBadge } from '@/components/ui/TierBadge'
 import { ProblemTierBadge } from '@/components/ui/ProblemTierBadge'
 import { SUBJECTS, timeAgo, parseJsonSafe, type SubjectKey, cn } from '@/lib/utils'
-import { ArrowLeft, CheckCircle2, XCircle, Users, MessageSquare, Send, Trash2, ImagePlus, X, Star, Pencil, Download, Lock, FileText, CheckCheck } from 'lucide-react'
+import { ArrowLeft, CheckCircle2, XCircle, Users, MessageSquare, Send, Trash2, ImagePlus, X, Star, Pencil, Download, Lock, FileText, CheckCheck, Bookmark, BookmarkCheck } from 'lucide-react'
 import Link from 'next/link'
 import toast from 'react-hot-toast'
 
@@ -82,6 +82,12 @@ export default function ProblemDetailPage() {
   const { id } = useParams<{ id: string }>()
   const { data: session } = useSession()
   const router = useRouter()
+  const [backHref, setBackHref] = useState('/problems')
+  const [backLabel, setBackLabel] = useState('문제 목록')
+  useEffect(() => {
+    const from = new URLSearchParams(window.location.search).get('from')
+    if (from) { setBackHref(from); setBackLabel('문제집으로') }
+  }, [])
 
   const [problem, setProblem] = useState<Problem | null>(null)
   const [loading, setLoading] = useState(true)
@@ -95,6 +101,17 @@ export default function ProblemDetailPage() {
   // Admin
   const [adminPts, setAdminPts] = useState('')
   const [adminLoading, setAdminLoading] = useState(false)
+
+  // Bookmark
+  const [bookmarked, setBookmarked] = useState(false)
+  const [bookmarkLoading, setBookmarkLoading] = useState(false)
+
+  // Difficulty vote
+  const [diffAvg, setDiffAvg] = useState<number | null>(null)
+  const [diffCount, setDiffCount] = useState(0)
+  const [myDiffVote, setMyDiffVote] = useState<number | null>(null)
+  const [diffVoting, setDiffVoting] = useState(false)
+  const [hoveredStar, setHoveredStar] = useState<number | null>(null)
 
   // Submissions tab
   const [submissions, setSubmissions] = useState<Submission[]>([])
@@ -137,8 +154,8 @@ export default function ProblemDetailPage() {
 
   useEffect(() => {
     loadProblem().then(async () => {
-      // Load own essay submission if logged in
       if (session?.user) {
+        // 에세이 제출 로드
         try {
           const res = await fetch(`/api/problems/${id}/essay`)
           if (res.ok) {
@@ -148,6 +165,16 @@ export default function ProblemDetailPage() {
         } catch { /* ignore */ }
       }
     })
+    // 북마크 + 난이도 로드 (비로그인도 평균은 볼 수 있음)
+    fetch(`/api/problems/${id}/difficulty-vote`).then(r => r.ok ? r.json() : null).then(d => {
+      if (d) { setDiffAvg(d.avg); setDiffCount(d.count); setMyDiffVote(d.myVote) }
+    }).catch(() => {})
+    // 북마크 상태 로드
+    if (session?.user) {
+      fetch(`/api/problems/${id}/bookmark`).then(r => r.ok ? r.json() : null).then(d => {
+        if (d) setBookmarked(d.bookmarked)
+      }).catch(() => {})
+    }
   }, [loadProblem, id, session?.user])
 
   const loadSubmissions = useCallback(async () => {
@@ -249,7 +276,11 @@ export default function ProblemDetailPage() {
       if (res.ok) {
         const data = await res.json()
         if (data.correct) {
-          toast.success(data.pointsAwarded > 0 ? `정답! +${data.pointsAwarded}pt 획득!` : '정답입니다!')
+          if (data.isSelfSolve) {
+            toast.success('정답입니다! (출제자는 자신의 문제에서 포인트를 받을 수 없습니다)')
+          } else {
+            toast.success(data.pointsAwarded > 0 ? `정답! +${data.pointsAwarded}pt 획득!` : '정답입니다!')
+          }
         } else {
           toast.error('오답입니다. 다시 시도해보세요!')
         }
@@ -441,9 +472,9 @@ export default function ProblemDetailPage() {
   return (
     <div className="max-w-3xl mx-auto px-4 py-8 space-y-6">
       {/* Back */}
-      <Link href="/problems" className="inline-flex items-center gap-1.5 text-sm text-text-secondary hover:text-text-primary transition-colors">
+      <Link href={backHref} className="inline-flex items-center gap-1.5 text-sm text-text-secondary hover:text-text-primary transition-colors">
         <ArrowLeft size={14} />
-        문제 목록
+        {backLabel}
       </Link>
 
       {/* Problem header */}
@@ -484,6 +515,28 @@ export default function ProblemDetailPage() {
             <h1 className="text-xl font-bold text-text-primary">{problem.title}</h1>
           </div>
           <div className="shrink-0 flex items-center gap-1">
+            {/* 북마크 버튼 */}
+            {session?.user && (
+              <button
+                onClick={async () => {
+                  setBookmarkLoading(true)
+                  try {
+                    const res = await fetch(`/api/problems/${id}/bookmark`, { method: 'POST' })
+                    if (res.ok) {
+                      const d = await res.json()
+                      setBookmarked(d.bookmarked)
+                      toast.success(d.bookmarked ? '북마크에 저장했습니다' : '북마크를 해제했습니다')
+                    }
+                  } catch { toast.error('오류가 발생했습니다') }
+                  setBookmarkLoading(false)
+                }}
+                disabled={bookmarkLoading}
+                className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs border transition-all ${bookmarked ? 'text-amber-500 bg-amber-500/10 border-amber-500/20 hover:bg-amber-500/20' : 'text-muted hover:text-amber-500 hover:bg-amber-500/5 border-transparent hover:border-amber-500/20'}`}
+              >
+                {bookmarked ? <BookmarkCheck size={13} /> : <Bookmark size={13} />}
+                {bookmarked ? '저장됨' : '저장'}
+              </button>
+            )}
             {canEdit && (
               <Link
                 href={`/problems/${id}/edit`}
@@ -515,6 +568,52 @@ export default function ProblemDetailPage() {
             <span className="flex items-center gap-1"><Users size={11} />{problem._count.submissions}명 도전</span>
             <span className="flex items-center gap-1"><CheckCircle2 size={11} />{problem.solveRate}% 정답</span>
           </div>
+        </div>
+
+        {/* 체감 난이도 */}
+        <div className="flex items-center gap-3 py-1">
+          <span className="text-xs text-muted shrink-0">체감 난이도</span>
+          <div className="flex items-center gap-0.5">
+            {[1,2,3,4,5].map((star) => {
+              const filled = (hoveredStar ?? myDiffVote ?? 0) >= star
+              const avgFilled = !hoveredStar && !myDiffVote && diffAvg !== null && diffAvg >= star - 0.5
+              return (
+                <button key={star}
+                  onMouseEnter={() => session?.user && problem.userSubmission?.correct && setHoveredStar(star)}
+                  onMouseLeave={() => setHoveredStar(null)}
+                  onClick={async () => {
+                    if (!session?.user) { toast.error('로그인이 필요합니다'); return }
+                    if (!problem.userSubmission?.correct) { toast.error('문제를 먼저 풀어야 평가할 수 있습니다'); return }
+                    setDiffVoting(true)
+                    try {
+                      const res = await fetch(`/api/problems/${id}/difficulty-vote`, {
+                        method: 'POST', headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ difficulty: star }),
+                      })
+                      if (res.ok) {
+                        const d = await res.json()
+                        setMyDiffVote(d.myVote); setDiffAvg(d.avg); setDiffCount(d.count)
+                        toast.success('난이도를 평가했습니다')
+                      }
+                    } catch { toast.error('오류가 발생했습니다') }
+                    setDiffVoting(false)
+                  }}
+                  disabled={diffVoting}
+                  className="transition-transform hover:scale-110">
+                  <Star size={16} className={`transition-colors ${filled || avgFilled ? 'fill-amber-400 text-amber-400' : 'text-border'}`} />
+                </button>
+              )
+            })}
+          </div>
+          {diffAvg !== null ? (
+            <span className="text-xs text-muted">{diffAvg.toFixed(1)} <span className="text-muted/60">({diffCount}명)</span></span>
+          ) : (
+            <span className="text-xs text-muted/50">아직 평가 없음</span>
+          )}
+          {myDiffVote && <span className="text-xs text-amber-500 ml-1">내 평가: ★{myDiffVote}</span>}
+          {!problem.userSubmission?.correct && session?.user && (
+            <span className="text-xs text-muted/50 ml-auto">풀고 나면 평가 가능</span>
+          )}
         </div>
 
         {/* Tabs */}

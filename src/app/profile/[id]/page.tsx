@@ -10,10 +10,11 @@ import { PointLineChart } from '@/components/ui/PointLineChart'
 import { RadarChart } from '@/components/ui/RadarChart'
 import { SUBJECTS } from '@/lib/utils'
 import { timeAgo } from '@/lib/utils'
-import { UserPlus, UserMinus, FileText, MessageSquare, Trophy } from 'lucide-react'
+import { UserPlus, UserMinus, FileText, MessageSquare, Trophy, Bookmark } from 'lucide-react'
 import { getTier } from '@/lib/scoring'
 import toast from 'react-hot-toast'
 
+interface BannerItem { id: string; name: string; imageUrl: string }
 interface UserProfile {
   id: string; name?: string | null; image?: string | null
   points: number; role: string; createdAt: string
@@ -24,10 +25,12 @@ interface UserProfile {
   pointTimeline: { date: string; points: number }[] // kept for compat, not used directly
   radarData: { label: string; value: number }[]
   solvedProblems: { id: string; problemNumber: number; title: string; subject: string | null }[]
+  bookmarkedProblems: { id: string; problemNumber: number; title: string; subject: string | null; approvedPts: number | null }[]
   isRival: boolean
   isMaster: boolean
   isFirstRuby: boolean
   rivals: { id: string; name?: string | null; image?: string | null; points: number }[]
+  equippedBanner: BannerItem | null
 }
 
 export default function PublicProfilePage() {
@@ -37,7 +40,7 @@ export default function PublicProfilePage() {
   const [loading, setLoading] = useState(true)
   const [rivalLoading, setRivalLoading] = useState(false)
   const [streakYear, setStreakYear] = useState(new Date().getFullYear())
-  const [streakData, setStreakData] = useState<{ streakMap: Record<string, number>; streak: number } | null>(null)
+  const [streakData, setStreakData] = useState<{ streakMap: Record<string, number>; streak: number; shieldMap?: Record<string, boolean> } | null>(null)
   const [pointYear, setPointYear] = useState(new Date().getFullYear())
   const [pointData, setPointData] = useState<{ date: string; points: number }[]>([])
 
@@ -92,7 +95,14 @@ export default function PublicProfilePage() {
   return (
     <div className="max-w-3xl mx-auto px-4 py-8 space-y-5">
       {/* Profile card */}
-      <div className="bg-surface border border-border rounded-2xl p-6">
+      <div className="bg-surface border border-border rounded-2xl overflow-hidden">
+        {/* Equipped banner */}
+        {profile.equippedBanner && (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img src={profile.equippedBanner.imageUrl} alt={profile.equippedBanner.name}
+            className="w-full h-28 object-cover" />
+        )}
+        <div className="p-6">
         <div className="flex items-start gap-4">
           <Avatar name={profile.name} image={profile.image} size={72} />
           <div className="flex-1 min-w-0">
@@ -136,6 +146,7 @@ export default function PublicProfilePage() {
             </div>
           </div>
         </div>
+        </div>
       </div>
 
       {/* Activity charts */}
@@ -147,6 +158,7 @@ export default function PublicProfilePage() {
           streakMap={streakData?.streakMap ?? profile.streakMap ?? {}}
           year={streakYear}
           streak={streakData?.streak ?? 0}
+          shieldMap={streakData?.shieldMap ?? {}}
           onYearChange={(y) => { setStreakYear(y); loadStreak(id, y) }}
         />
 
@@ -160,26 +172,48 @@ export default function PublicProfilePage() {
           />
         </div>
 
-        {/* Solved problems */}
-        <div className="border-t border-border pt-4">
-          <p className="text-xs text-text-secondary mb-2 font-medium">
+        {/* Solved problems + Bookmarks */}
+        <div className="border-t border-border pt-4 space-y-3">
+          {/* 푼 문제 */}
+          <p className="text-xs text-text-secondary font-medium">
             푼 문제 <span className="text-muted font-normal">({profile.solvedProblems.length})</span>
           </p>
           {profile.solvedProblems.length === 0 ? (
-            <p className="text-xs text-muted py-2">아직 푼 문제가 없습니다</p>
+            <p className="text-xs text-muted py-1">아직 푼 문제가 없습니다</p>
           ) : (
             <div className="flex flex-wrap gap-1.5">
               {profile.solvedProblems.map((p) => (
-                <Link
-                  key={p.id}
-                  href={`/problems/${p.id}`}
-                  className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs bg-emerald-500/10 text-emerald-500 hover:bg-emerald-500/20 transition-colors border border-emerald-500/20"
-                >
+                <Link key={p.id} href={`/problems/${p.id}`}
+                  className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs bg-emerald-500/10 text-emerald-500 hover:bg-emerald-500/20 transition-colors border border-emerald-500/20">
                   <span className="font-mono font-semibold">#{p.problemNumber}</span>
                   <span className="text-emerald-400/80 truncate max-w-[120px]">{p.title}</span>
                 </Link>
               ))}
             </div>
+          )}
+
+          {/* 북마크 (본인만) */}
+          {session?.user?.id === id && (
+            <>
+              <p className="text-xs text-text-secondary font-medium pt-2 border-t border-border/50 flex items-center gap-1.5">
+                <Bookmark size={11} className="text-amber-500" />
+                저장한 문제 <span className="text-muted font-normal">({profile.bookmarkedProblems?.length ?? 0})</span>
+              </p>
+              {(profile.bookmarkedProblems?.length ?? 0) === 0 ? (
+                <p className="text-xs text-muted py-1">저장한 문제가 없습니다</p>
+              ) : (
+                <div className="flex flex-wrap gap-1.5">
+                  {profile.bookmarkedProblems.map((p) => (
+                    <Link key={p.id} href={`/problems/${p.id}`}
+                      className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs bg-amber-500/10 text-amber-600 hover:bg-amber-500/20 transition-colors border border-amber-500/20">
+                      <Bookmark size={9} className="fill-amber-500 text-amber-500" />
+                      <span className="font-mono font-semibold">#{p.problemNumber}</span>
+                      <span className="text-amber-500/80 truncate max-w-[120px]">{p.title}</span>
+                    </Link>
+                  ))}
+                </div>
+              )}
+            </>
           )}
         </div>
 

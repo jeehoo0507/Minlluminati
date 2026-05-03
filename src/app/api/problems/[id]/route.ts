@@ -87,10 +87,12 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
 
   // Notify author on status change (admin action)
   if (isAdmin && status && status !== problem.status && problem.authorId !== session.user.id) {
+    const effectivePts = approvedPts ?? problem.approvedPts ?? 0
     const notifMsg = status === 'APPROVED'
-      ? `문제 "${problem.title}"이(가) 승인되었습니다.${approvedPts ? ` (${approvedPts}pt)` : ''}`
+      ? `문제 "${problem.title}"이(가) 승인되었습니다.${effectivePts ? ` (상점 포인트 +${effectivePts}pt)` : ''}`
       : `문제 "${problem.title}"이(가) 반려되었습니다.`
-    await prisma.notification.create({
+
+    const notifCreate = prisma.notification.create({
       data: {
         userId: problem.authorId,
         type: 'PROBLEM_APPROVED',
@@ -99,6 +101,19 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
         link: `/problems/${problem.id}`,
       },
     })
+
+    if (status === 'APPROVED' && effectivePts > 0) {
+      // Award shop points to author on approval
+      await prisma.$transaction([
+        notifCreate,
+        prisma.user.update({
+          where: { id: problem.authorId },
+          data: { shopPoints: { increment: effectivePts } },
+        }),
+      ])
+    } else {
+      await notifCreate
+    }
   }
 
   return NextResponse.json(updated)

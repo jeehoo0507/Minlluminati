@@ -70,9 +70,10 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
     update: { answer: storedAnswer, correct },
   })
 
-  // Award points only on first correct submission
+  // Award points only on first correct submission (authors cannot earn from their own problems)
   let pointsAwarded = 0
-  if (correct && !wasAlreadyCorrect && problem.approvedPts && problem.approvedPts > 0) {
+  const isSelfSolve = problem.authorId === session.user.id
+  if (correct && !wasAlreadyCorrect && problem.approvedPts && problem.approvedPts > 0 && !isSelfSolve) {
     await prisma.$transaction([
       prisma.user.update({
         where: { id: session.user.id },
@@ -110,5 +111,5 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
     }
   }
 
-  return NextResponse.json({ correct, pointsAwarded, multiPart: subAnswerDefs.length > 0 })
+  return NextResponse.json({ correct, pointsAwarded, multiPart: subAnswerDefs.length > 0, isSelfSolve })
 }

@@ -5,7 +5,7 @@ import { useRouter, useParams } from 'next/navigation'
 import {
   MousePointer2, Type, StickyNote, Image as ImageIcon,
   ZoomIn, ZoomOut, Maximize2, Trash2, ArrowLeft, Save,
-  Lock, Globe, Pencil, X, AlignLeft, Minus, Plus, Pen, Shapes,
+  Lock, Globe, Pencil, X, AlignLeft, Minus, Plus, Pen, Shapes, Users,
 } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { nanoid } from 'nanoid'
@@ -88,9 +88,13 @@ export default function BoardCanvas() {
   const [isPanning, setIsPanning]         = useState(false)
   const [isDrawingPen, setIsDrawingPen]   = useState(false)
   const isDrawingPenRef      = useRef(false)
-  const drawingPointerIdRef  = useRef<number | null>(null)   // 드로잉 중인 포인터 ID
+  const drawingPointerIdRef  = useRef<number | null>(null)   // Pointer Events용 포인터 ID (Galaxy S Pen 등)
   const drawingPointerTypeRef = useRef<string | null>(null)  // 'pen' | 'touch' | 'mouse'
-  const lastPenTimeRef       = useRef(0)  // 마지막 pen 포인터 이벤트 시각 — 시간 기반 팜 리젝션
+  const drawingTouchIdRef    = useRef<number | null>(null)   // Touch Events용 터치 식별자 (iOS Apple Pencil)
+  const drawingIsStylusRef   = useRef(false)                 // true = stylus(Apple Pencil), false = finger
+  const lastPenTimeRef       = useRef(0)
+  const toolRef              = useRef<Tool>('select')        // 항상 최신 tool (native handler용)
+  const addElementNativeRef  = useRef<(el: BoardElement) => void>(() => {}) // native handler → addElement
   const isDraggingRef        = useRef(false)
   const isResizingRef        = useRef(false)
   const [isRectSelecting, setIsRectSelecting] = useState(false)
@@ -101,7 +105,16 @@ export default function BoardCanvas() {
   const presenceRef = useRef<Record<string, PresenceUser>>({}) // stale-closure fix
   const [remoteCursors, setRemoteCursors] = useState<Record<string, { cursorX: number; cursorY: number; name: string; color: string }>>({})
   const [followingId, setFollowingId]     = useState<string | null>(null)
-  const [showPresenceMenu, setShowPresenceMenu] = useState(false)
+  const [followingName, setFollowingName] = useState<string | null>(null)
+  const [isDesktop, setIsDesktop] = useState(false)
+  const [showPresencePanel, setShowPresencePanel] = useState(false) // 모바일: 기본 숨김
+  useEffect(() => {
+    const mq = window.matchMedia('(min-width: 768px)')
+    const update = () => setIsDesktop(mq.matches)
+    update()
+    mq.addEventListener('change', update)
+    return () => mq.removeEventListener('change', update)
+  }, [])
   const [sseConnected, setSseConnected]   = useState(false)
 
   // Undo / Redo
@@ -113,6 +126,16 @@ export default function BoardCanvas() {
 
   // 삭제된 요소 ID 추적 — 명시적 delete만 서버에 전송 (notIn 삭제 경쟁 방지)
   const deletedIdsRef = useRef<string[]>([])
+  // 저장 완료 후에도 일정 시간(60초) 삭제 기억 유지 — SSE로 복원되는 버그 방지
+  const committedDeletedIdsRef = useRef<Map<string, number>>(new Map()) // id → timestamp
+  // 로컬에서 수정(이동/변경)했지만 아직 서버에 저장 안 된 요소 ID
+  // SSE merge 시 이 ID들은 원격 상태로 덮어쓰지 않음
+  const dirtyElementIdsRef = useRef<Set<string>>(new Set())
+  // 빠른 SSE 브로드캐스트 (DB 저장 없이) — 100ms 디바운스
+  const broadcastRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  // 동시 저장 경쟁 방지 — 한 번에 하나의 save만 실행, 대기 중인 저장은 큐에 보관
+  const saveInFlightRef = useRef(false)
+  const saveQueueRef = useRef<BoardElement[] | null>(null) // 가장 최신 대기 상태
   // SSE 머지 후 로컬 요소가 보존됐을 때 re-save 예약
   const pendingResaveRef = useRef<BoardElement[] | null>(null)
 
@@ -141,6 +164,7 @@ export default function BoardCanvas() {
   const penWidthRef      = useRef(penWidth)
   useEffect(() => { penColorRef.current = penColor }, [penColor])
   useEffect(() => { penWidthRef.current = penWidth }, [penWidth])
+  toolRef.current = tool // 매 렌더마다 동기화 (native handler 스테일 클로저 방지)
 
   const cursorThrottleRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const panRef2  = useRef(pan)
@@ -170,7 +194,8 @@ export default function BoardCanvas() {
 
     es.onopen = () => setSseConnected(true)
     es.onmessage = (e) => {
-      const event: BoardSSEEvent = JSON.parse(e.data)
+      let event: BoardSSEEvent
+      try { event = JSON.parse(e.data) } catch { return }
       const myId = session.user.id
 
       if (event.type === 'presence') {
@@ -200,30 +225,52 @@ export default function BoardCanvas() {
           }
           return fid
         })
-      } else if (event.type === 'elements' && event.userId !== myId) {
+      } else if (event.type === 'elements' && myId && event.userId !== myId) {
         // 다른 유저가 저장한 상태를 받아 스마트 병합
-        const incoming = (event.elements as BoardElement[]).map((el: BoardElement) => ({
-          ...el, type: el.type as ElementType,
-          style: typeof el.style === 'string' ? JSON.parse(el.style || '{}') : el.style,
-        }))
+        // myId 가드: 세션 로딩 중이면 myId = undefined → event.userId !== undefined 가 true → 자기 SSE를 받아 되돌아가는 버그 방지
+        const rawElements = Array.isArray((event as { elements?: unknown }).elements)
+          ? (event as { elements: BoardElement[] }).elements : []
+        const incoming: BoardElement[] = rawElements.map((el: BoardElement) => {
+          let style = el.style
+          if (typeof el.style === 'string') {
+            try { style = JSON.parse(el.style || '{}') } catch { style = {} }
+          }
+          return { ...el, type: el.type as ElementType, style }
+        })
         const remoteDeletedIds: string[] = (event as { deletedIds?: string[] }).deletedIds ?? []
         const deletedSet = new Set(remoteDeletedIds)
 
         setElements((prev) => {
           if (isDrawingPenRef.current) return prev
 
+          // 내가 명시적으로 삭제한 ID 집합 — 원격이 되살리지 못하도록
+          // pendingDelete(아직 저장 전) + committedDelete(이미 저장됐지만 60초간 기억) 합산
+          const now = Date.now()
+          committedDeletedIdsRef.current.forEach((ts, cid) => {
+            if (now - ts > 60000) committedDeletedIdsRef.current.delete(cid)
+          })
+          const committedKeys: string[] = []
+          committedDeletedIdsRef.current.forEach((_, cid) => committedKeys.push(cid))
+          const myDeletedIds = new Set([...deletedIdsRef.current, ...committedKeys])
+          const prevMap = new Map(prev.map((e) => [e.id, e]))
           const remoteIds = new Set(incoming.map((e) => e.id))
-          // 로컬에만 있는 요소 보존 (상대방이 명시적으로 삭제한 것은 제외)
-          const localOnly = prev.filter((el) => !remoteIds.has(el.id) && !deletedSet.has(el.id))
+          // 로컬에만 있는 요소 보존 (상대방이 명시적으로 삭제한 것 + 내가 삭제한 것은 제외)
+          const localOnly = prev.filter((el) => !remoteIds.has(el.id) && !deletedSet.has(el.id) && !myDeletedIds.has(el.id))
 
-          // 드래그 중인 요소는 로컬 위치 우선
+          // 드래그 중인 요소 + 로컬에서 수정 후 아직 저장 안 된 요소는 로컬 위치 우선
           const activeIds: Set<string> = isDraggingRef.current && multiOrigRef.current
             ? new Set(Array.from(multiOrigRef.current.keys()))
             : new Set()
 
           const merged = incoming
-            .filter((el) => !deletedSet.has(el.id))
-            .map((el) => activeIds.has(el.id) ? (prev.find((p) => p.id === el.id) ?? el) : el)
+            .filter((el) => !deletedSet.has(el.id) && !myDeletedIds.has(el.id))
+            .map((el) => {
+              // 로컬이 더 최신(미저장 dirty)이거나 드래그 중이면 로컬 우선
+              if (activeIds.has(el.id) || dirtyElementIdsRef.current.has(el.id)) {
+                return prevMap.get(el.id) ?? el
+              }
+              return el
+            })
 
           const next = [...merged, ...localOnly]
           if (localOnly.length > 0) pendingResaveRef.current = next
@@ -238,30 +285,72 @@ export default function BoardCanvas() {
   }, [id, session?.user]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── Autosave ──────────────────────────────────────────────────────
+  // 동시 저장 경쟁(race condition) 방지:
+  //  - 저장 중(in-flight)이면 큐에 쌓음 (가장 최신 상태만 보관)
+  //  - 저장 완료 후 큐에 대기 중인 상태가 있으면 즉시 재저장
   const save = useCallback(async (els: BoardElement[]) => {
+    if (saveInFlightRef.current) {
+      // 다른 save가 진행 중 → 큐에 최신 상태 덮어쓰기 (이전 대기는 버림)
+      saveQueueRef.current = els
+      return
+    }
+    saveInFlightRef.current = true
     // 명시적으로 삭제된 ID만 서버에 전달 (다른 유저 요소 삭제 경쟁 방지)
     const deletedIds = [...deletedIdsRef.current]
     deletedIdsRef.current = [] // 낙관적 클리어 (실패 시 복원)
-    const res = await fetch(`/api/boards/${id}/elements`, {
-      method: 'PUT', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        elements: els.map((el) => ({ ...el, style: JSON.stringify(el.style) })),
-        deletedIds,
-      }),
-    })
-    if (!res.ok) {
-      deletedIdsRef.current = [...deletedIds, ...deletedIdsRef.current] // 실패 시 복원
-      toast.error('저장 실패')
-    } else {
-      isDirty.current = false
+    try {
+      const res = await fetch(`/api/boards/${id}/elements`, {
+        method: 'PUT', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          elements: els.map((el) => ({ ...el, style: JSON.stringify(el.style) })),
+          deletedIds,
+        }),
+      })
+      if (!res.ok) {
+        deletedIdsRef.current = [...deletedIds, ...deletedIdsRef.current]
+        toast.error('저장 실패')
+      } else {
+        isDirty.current = false
+        dirtyElementIdsRef.current.clear()
+        // 저장 완료된 삭제 ID → committedDeleted로 이동 (60초간 SSE 복원 차단)
+        const ts = Date.now()
+        deletedIds.forEach((did) => committedDeletedIdsRef.current.set(did, ts))
+      }
+    } catch {
+      deletedIdsRef.current = [...deletedIds, ...deletedIdsRef.current]
+      toast.error('저장 실패 (네트워크)')
+    } finally {
+      saveInFlightRef.current = false
+      // 저장 중 밀려온 요청이 있으면 즉시 재저장 (최신 상태로)
+      if (saveQueueRef.current) {
+        const queued = saveQueueRef.current
+        saveQueueRef.current = null
+        save(queued)
+      }
     }
+  }, [id]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // 빠른 브로드캐스트 — DB 저장 없이 SSE만 (100ms 디바운스, 상대방이 빠르게 볼 수 있도록)
+  const scheduleBroadcast = useCallback((els: BoardElement[]) => {
+    if (broadcastRef.current) clearTimeout(broadcastRef.current)
+    broadcastRef.current = setTimeout(() => {
+      const deletedIds = [...deletedIdsRef.current]
+      fetch(`/api/boards/${id}/broadcast`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          elements: els.map((el) => ({ ...el, style: JSON.stringify(el.style) })),
+          deletedIds,
+        }),
+      }).catch(() => {})
+    }, 100)
   }, [id])
 
-  const scheduleSave = useCallback((els: BoardElement[]) => {
+  const scheduleSave = useCallback((els: BoardElement[], broadcast = true) => {
     isDirty.current = true
+    if (broadcast) scheduleBroadcast(els)
     if (autosaveRef.current) clearTimeout(autosaveRef.current)
     autosaveRef.current = setTimeout(() => save(els), AUTOSAVE_DELAY)
-  }, [save])
+  }, [save, scheduleBroadcast])
 
   useEffect(() => () => { if (autosaveRef.current) clearTimeout(autosaveRef.current) }, [])
 
@@ -270,31 +359,309 @@ export default function BoardCanvas() {
     if (pendingResaveRef.current) {
       const els = pendingResaveRef.current
       pendingResaveRef.current = null
-      scheduleSave(els)
+      scheduleSave(els, false) // pendingResave: 상대방이 이미 본 내용이므로 broadcast 불필요
     }
   }, [elements, scheduleSave]) // eslint-disable-line react-hooks/exhaustive-deps
 
-  // ── 스타일러스 stroke stuck 안전망 ────────────────────────────────
-  // setPointerCapture 실패 또는 캔버스 밖 pointerup 발생 시 drawing state 강제 초기화
+  // ── 펜 드로잉 — native pointer event 핸들러 ──────────────────────
+  // React 합성 이벤트는 루트 위임(root delegation) 방식이라 iOS에서 preventDefault()가 너무 늦게 실행됨
+  // → { passive: false } native listener로 교체, pointerdown 즉시 preventDefault() 호출
   useEffect(() => {
-    const onGlobalUp = (e: PointerEvent) => {
-      if (!isDrawingPenRef.current) return
+    const el = wrapperRef.current
+    if (!el) return
+
+    function onNativePenDown(e: PointerEvent) {
+      if (toolRef.current !== 'pen') return
+      // touch 타입은 Touch Events handler가 처리 (iOS Apple Pencil 포함)
+      // 여기서는 pen 타입만 처리 (Galaxy S Pen, Surface Pen 등 non-touch stylus)
+      if (e.pointerType !== 'pen') return
+
+      // 스트로크 진행 중인 경우 처리
+      if (isDrawingPenRef.current) {
+        // pen 스트로크 stuck 상태 → 강제 초기화 후 새 스트로크
+        isDrawingPenRef.current = false
+        setIsDrawingPen(false)
+        drawingPointerIdRef.current = null
+        drawingPointerTypeRef.current = null
+        drawingPointsRef.current = []
+        if (livePathRef.current) livePathRef.current.setAttribute('d', '')
+      }
+
+      e.preventDefault()
+
+      if (e.pointerType === 'pen') lastPenTimeRef.current = Date.now()
+
+      const rect = wrapperRef.current?.getBoundingClientRect()
+      if (!rect) return
+      const _p = panRef2.current; const _z = zoomRef2.current
+      const pos = { x: (e.clientX - rect.left - _p.x) / _z, y: (e.clientY - rect.top - _p.y) / _z }
+
+      drawingPointsRef.current = [pos]
+      isDrawingPenRef.current = true
+      setIsDrawingPen(true)
+      drawingPointerIdRef.current = e.pointerId
+      drawingPointerTypeRef.current = e.pointerType
+
+      if (livePathRef.current) {
+        livePathRef.current.setAttribute('d', `M ${pos.x} ${pos.y}`)
+        livePathRef.current.setAttribute('stroke', penColorRef.current)
+        livePathRef.current.setAttribute('stroke-width', String((penWidthRef.current / zoomRef2.current).toFixed(2)))
+      }
+    }
+
+    function onNativePenMove(e: PointerEvent) {
+      if (!isDrawingPenRef.current || !livePathRef.current) return
+      if (isGesturingRef.current && e.pointerType === 'touch') return
+      if (drawingPointerTypeRef.current === 'pen' && e.pointerType === 'touch') return
       if (drawingPointerIdRef.current !== null && e.pointerId !== drawingPointerIdRef.current) return
-      // React onPointerUp이 이미 처리했다면 isDrawingPenRef가 false — 이 경우 early return함
+
+      if (e.pointerType === 'pen') lastPenTimeRef.current = Date.now()
+      e.preventDefault()
+
+      const rect = wrapperRef.current?.getBoundingClientRect()
+      if (!rect) return
+      const _p = panRef2.current; const _z = zoomRef2.current
+      const toWorld = (sx: number, sy: number) => ({ x: (sx - rect.left - _p.x) / _z, y: (sy - rect.top - _p.y) / _z })
+
+      const raw = e.getCoalescedEvents?.() ?? []
+      const events = raw.length > 0 ? raw : [e]
+
+      const pts = drawingPointsRef.current
+      const prevLen = pts.length
+      for (const ce of events) pts.push(toWorld(ce.clientX, ce.clientY))
+      if (pts.length < 2) return
+
+      if (prevLen < 2) {
+        let d = `M ${pts[0].x.toFixed(1)} ${pts[0].y.toFixed(1)}`
+        for (let i = 1; i < pts.length; i++) {
+          const p = pts[i - 1]; const c = pts[i]
+          d += ` Q ${p.x.toFixed(1)} ${p.y.toFixed(1)} ${((p.x + c.x) / 2).toFixed(1)} ${((p.y + c.y) / 2).toFixed(1)}`
+        }
+        livePathRef.current.setAttribute('d', d)
+      } else {
+        let d = livePathRef.current.getAttribute('d') ?? ''
+        for (let i = prevLen; i < pts.length; i++) {
+          const p = pts[i - 1]; const c = pts[i]
+          d += ` Q ${p.x.toFixed(1)} ${p.y.toFixed(1)} ${((p.x + c.x) / 2).toFixed(1)} ${((p.y + c.y) / 2).toFixed(1)}`
+        }
+        livePathRef.current.setAttribute('d', d)
+      }
+    }
+
+    function onNativePenUp(e: PointerEvent) {
+      if (!isDrawingPenRef.current) return
+      const isCancel = e.type === 'pointercancel'
+      // cancel 이벤트는 포인터 ID 무관하게 드로잉 상태 초기화 (stuck 방지)
+      if (!isCancel && drawingPointerIdRef.current !== null && e.pointerId !== drawingPointerIdRef.current) return
+
       isDrawingPenRef.current = false
       setIsDrawingPen(false)
       drawingPointerIdRef.current = null
       drawingPointerTypeRef.current = null
+
+      const pts = drawingPointsRef.current
       drawingPointsRef.current = []
       if (livePathRef.current) livePathRef.current.setAttribute('d', '')
+
+      // 점이 2개 미만이면 스트로크 없음
+      // cancel이어도 충분한 점이 있으면 커밋 — iOS가 cancel 발생시켜도 이미 그린 선은 저장
+      if (pts.length < 2) return
+
+      let minX = pts[0].x, maxX = pts[0].x, minY = pts[0].y, maxY = pts[0].y
+      for (const p of pts) {
+        if (p.x < minX) minX = p.x; if (p.x > maxX) maxX = p.x
+        if (p.y < minY) minY = p.y; if (p.y > maxY) maxY = p.y
+      }
+      const pad = 8
+      const rel = pts.map((p) => ({ x: p.x - minX + pad, y: p.y - minY + pad }))
+      let d = `M ${rel[0].x} ${rel[0].y}`
+      for (let i = 1; i < rel.length; i++) {
+        const p = rel[i - 1]; const c = rel[i]
+        d += ` Q ${p.x} ${p.y} ${(p.x + c.x) / 2} ${(p.y + c.y) / 2}`
+      }
+      const newEl: BoardElement = {
+        id: nanoid(), type: 'PEN',
+        x: minX - pad, y: minY - pad,
+        width: maxX - minX + pad * 2, height: maxY - minY + pad * 2,
+        content: d,
+        style: { strokeColor: penColorRef.current, strokeWidth: penWidthRef.current },
+        zIndex: zIndexCounter.current++,
+      }
+      addElementNativeRef.current(newEl)
     }
-    window.addEventListener('pointerup', onGlobalUp)
-    window.addEventListener('pointercancel', onGlobalUp)
+
+    el.addEventListener('pointerdown',   onNativePenDown, { passive: false })
+    el.addEventListener('pointermove',   onNativePenMove, { passive: false })
+    el.addEventListener('pointerup',     onNativePenUp)
+    el.addEventListener('pointercancel', onNativePenUp)
+
     return () => {
-      window.removeEventListener('pointerup', onGlobalUp)
-      window.removeEventListener('pointercancel', onGlobalUp)
+      el.removeEventListener('pointerdown',   onNativePenDown)
+      el.removeEventListener('pointermove',   onNativePenMove)
+      el.removeEventListener('pointerup',     onNativePenUp)
+      el.removeEventListener('pointercancel', onNativePenUp)
     }
-  }, []) // eslint-disable-line react-hooks/exhaustive-deps
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [loading])
+
+  // ── Touch Events 기반 펜 드로잉 (iOS Apple Pencil / 손가락) ──────
+  // Pointer Events보다 Touch Events가 iOS에서 훨씬 안정적:
+  //  - touchType === 'stylus' 로 Apple Pencil을 직접 구분
+  //  - pointercancel 대신 touchcancel (훨씬 드물게 발생)
+  //  - preventDefault()가 즉시 동작 (passive: false native listener)
+  //  - stopPropagation()으로 React 이벤트 위임 우회
+  useEffect(() => {
+    if (loading) return
+    const el = wrapperRef.current
+    if (!el) return
+
+    // 스트로크 포인트 배열을 SVG path + BoardElement로 커밋
+    function commitTouchStroke(pts: { x: number; y: number }[]) {
+      if (pts.length < 2) return
+      let minX = pts[0].x, maxX = pts[0].x, minY = pts[0].y, maxY = pts[0].y
+      for (const p of pts) {
+        if (p.x < minX) minX = p.x; if (p.x > maxX) maxX = p.x
+        if (p.y < minY) minY = p.y; if (p.y > maxY) maxY = p.y
+      }
+      const pad = 8
+      const rel = pts.map((p) => ({ x: p.x - minX + pad, y: p.y - minY + pad }))
+      let d = `M ${rel[0].x} ${rel[0].y}`
+      for (let i = 1; i < rel.length; i++) {
+        const p = rel[i - 1]; const c = rel[i]
+        d += ` Q ${p.x} ${p.y} ${(p.x + c.x) / 2} ${(p.y + c.y) / 2}`
+      }
+      addElementNativeRef.current({
+        id: nanoid(), type: 'PEN',
+        x: minX - pad, y: minY - pad,
+        width: maxX - minX + pad * 2, height: maxY - minY + pad * 2,
+        content: d,
+        style: { strokeColor: penColorRef.current, strokeWidth: penWidthRef.current },
+        zIndex: zIndexCounter.current++,
+      })
+    }
+
+    function resetDrawingState(commit = false) {
+      const pts = drawingPointsRef.current.slice()
+      isDrawingPenRef.current = false
+      setIsDrawingPen(false)
+      drawingTouchIdRef.current = null
+      drawingIsStylusRef.current = false
+      drawingPointsRef.current = []
+      if (livePathRef.current) livePathRef.current.setAttribute('d', '')
+      if (commit) commitTouchStroke(pts)
+    }
+
+    function onTouchStart(e: TouchEvent) {
+      if (toolRef.current !== 'pen') return
+
+      // 2개 이상 터치 → 제스처 모드
+      if (e.touches.length >= 2) {
+        if (isDrawingPenRef.current) {
+          resetDrawingState(true) // 그리던 스트로크 저장 후 종료
+        }
+        // React onTouchStart(gesture)에 전달 (stopPropagation 없음)
+        return
+      }
+
+      const touch = e.changedTouches[0]
+      const isStylus = (touch as unknown as { touchType?: string }).touchType === 'stylus'
+
+      // palm rejection: stylus로 그리는 중에 새 finger touch → 손바닥으로 간주, 차단
+      if (isDrawingPenRef.current && !isStylus && drawingIsStylusRef.current) {
+        e.preventDefault()
+        e.stopPropagation()
+        return
+      }
+
+      // 이미 그리는 중 (다른 touch) → 스트로크 저장 후 리셋
+      if (isDrawingPenRef.current) resetDrawingState(true)
+
+      e.preventDefault()
+      e.stopPropagation() // React onTouchStart(gesture)로 전파 차단
+
+      const rect = wrapperRef.current?.getBoundingClientRect()
+      if (!rect) return
+      const _p = panRef2.current; const _z = zoomRef2.current
+      const pos = { x: (touch.clientX - rect.left - _p.x) / _z, y: (touch.clientY - rect.top - _p.y) / _z }
+
+      drawingPointsRef.current = [pos]
+      isDrawingPenRef.current = true
+      setIsDrawingPen(true)
+      drawingTouchIdRef.current = touch.identifier
+      drawingIsStylusRef.current = isStylus
+      if (isStylus) lastPenTimeRef.current = Date.now()
+
+      if (livePathRef.current) {
+        livePathRef.current.setAttribute('d', `M ${pos.x} ${pos.y}`)
+        livePathRef.current.setAttribute('stroke', penColorRef.current)
+        livePathRef.current.setAttribute('stroke-width', String((penWidthRef.current / zoomRef2.current).toFixed(2)))
+      }
+    }
+
+    function onTouchMove(e: TouchEvent) {
+      if (!isDrawingPenRef.current || !livePathRef.current) return
+
+      let activeTouch: Touch | null = null
+      for (let i = 0; i < e.changedTouches.length; i++) {
+        if (e.changedTouches[i].identifier === drawingTouchIdRef.current) {
+          activeTouch = e.changedTouches[i]; break
+        }
+      }
+      if (!activeTouch) return
+
+      e.preventDefault()
+      e.stopPropagation()
+
+      const rect = wrapperRef.current?.getBoundingClientRect()
+      if (!rect) return
+      const _p = panRef2.current; const _z = zoomRef2.current
+      const toWorld = (sx: number, sy: number) => ({ x: (sx - rect.left - _p.x) / _z, y: (sy - rect.top - _p.y) / _z })
+
+      const pts = drawingPointsRef.current
+      const prevLen = pts.length
+      pts.push(toWorld(activeTouch.clientX, activeTouch.clientY))
+      if (pts.length < 2) return
+
+      if (prevLen < 2) {
+        let d = `M ${pts[0].x.toFixed(1)} ${pts[0].y.toFixed(1)}`
+        for (let i = 1; i < pts.length; i++) {
+          const p = pts[i - 1]; const c = pts[i]
+          d += ` Q ${p.x.toFixed(1)} ${p.y.toFixed(1)} ${((p.x + c.x) / 2).toFixed(1)} ${((p.y + c.y) / 2).toFixed(1)}`
+        }
+        livePathRef.current.setAttribute('d', d)
+      } else {
+        const p = pts[pts.length - 2]; const c = pts[pts.length - 1]
+        const existing = livePathRef.current.getAttribute('d') ?? ''
+        livePathRef.current.setAttribute('d',
+          existing + ` Q ${p.x.toFixed(1)} ${p.y.toFixed(1)} ${((p.x + c.x) / 2).toFixed(1)} ${((p.y + c.y) / 2).toFixed(1)}`)
+      }
+    }
+
+    function onTouchEnd(e: TouchEvent) {
+      if (!isDrawingPenRef.current) return
+      if (e.type !== 'touchcancel') {
+        let found = false
+        for (let i = 0; i < e.changedTouches.length; i++) {
+          if (e.changedTouches[i].identifier === drawingTouchIdRef.current) { found = true; break }
+        }
+        if (!found) return
+      }
+      resetDrawingState(true) // touchcancel이어도 커밋 (이미 그린 선 저장)
+    }
+
+    el.addEventListener('touchstart',  onTouchStart, { passive: false })
+    el.addEventListener('touchmove',   onTouchMove,  { passive: false })
+    el.addEventListener('touchend',    onTouchEnd)
+    el.addEventListener('touchcancel', onTouchEnd)
+
+    return () => {
+      el.removeEventListener('touchstart',  onTouchStart)
+      el.removeEventListener('touchmove',   onTouchMove)
+      el.removeEventListener('touchend',    onTouchEnd)
+      el.removeEventListener('touchcancel', onTouchEnd)
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [loading, setIsDrawingPen])
 
   // ── Cursor broadcast ──────────────────────────────────────────────
   const broadcastCursor = useCallback((wx: number, wy: number) => {
@@ -334,9 +701,11 @@ export default function BoardCanvas() {
 
   // ── Touch gestures (iPad two-finger pan + pinch zoom) ────────────
   function onTouchStart(e: React.TouchEvent) {
+    // 이 핸들러는 2-finger 제스처 전용
+    // 1-touch 드로잉은 native Touch Events handler가 stopPropagation으로 차단하므로 여기 도달 안 함
     if (e.touches.length === 2) {
-      // Apple Pencil 스트로크 중에만 두 손가락 제스처 무시 (손가락으로 쓰는 중엔 허용)
-      if (isDrawingPenRef.current && drawingPointerTypeRef.current === 'pen') return
+      // stylus로 그리는 중 두 손가락 제스처 → native handler가 스트로크 저장 후 여기로 전달함
+      // isDrawingPenRef가 이미 false로 리셋된 상태이므로 바로 제스처 시작
       e.preventDefault()
       isGesturingRef.current = true
       setIsDragging(false); setIsPanning(false); setIsRectSelecting(false)
@@ -382,8 +751,7 @@ export default function BoardCanvas() {
   function onTouchEnd(e: React.TouchEvent) {
     if (e.touches.length < 2) {
       touchRef.current = null
-      // Short delay before re-enabling pointer events to prevent stray pointer-up from being processed
-      setTimeout(() => { isGesturingRef.current = false }, 80)
+      isGesturingRef.current = false // 딜레이 제거 — 80ms 지연이 빠른 연속 스트로크를 막았음
     }
   }
 
@@ -407,7 +775,7 @@ export default function BoardCanvas() {
       }
       if (e.key === 'Escape') {
         setSelectedIds([]); setEditingId(null); setTool('select')
-        setShowShapeMenu(false); setFollowingId(null)
+        setShowShapeMenu(false); setFollowingId(null); setFollowingName(null)
       }
       if ((e.key === 'Delete' || e.key === 'Backspace') && selectedIds.length > 0 && !editingId) deleteElements(selectedIds)
       if (!editingId) {
@@ -458,40 +826,7 @@ export default function BoardCanvas() {
       return
     }
 
-    if (tool === 'pen') {
-      // ① 시간 기반 팜 리젝션: pen 입력이 있었던 300ms 이내 touch는 팜으로 간주하여 무시
-      if (e.pointerType === 'touch' && Date.now() - lastPenTimeRef.current < 300) return
-      // pen 이벤트 시각 갱신
-      if (e.pointerType === 'pen') lastPenTimeRef.current = Date.now()
-
-      if (isDrawingPenRef.current) {
-        // 같은 포인터 ID가 다시 pointerdown → 무시 (정상적으론 발생 안 함)
-        if (e.pointerId === drawingPointerIdRef.current) return
-        // 팜 리젝션: pen 스트로크 중 새 touch → 손바닥으로 간주, 차단
-        // ★ 주의: 'touch'를 무조건 차단하면 iOS에서 pencil이 touch로 리포트될 때 모든 stroke 씹힘
-        //         → currentType이 'pen'일 때만 touch를 팜으로 차단
-        if (e.pointerType === 'touch' && drawingPointerTypeRef.current === 'pen') return
-        // 그 외 (새 포인터 ID, stuck, ghost): 강제 초기화 후 새 스트로크 시작
-        isDrawingPenRef.current = false
-        drawingPointerIdRef.current = null
-        drawingPointerTypeRef.current = null
-        drawingPointsRef.current = []
-        if (livePathRef.current) livePathRef.current.setAttribute('d', '')
-      }
-      e.preventDefault()
-      const pos = screenToWorld(e.clientX, e.clientY)
-      drawingPointsRef.current = [pos]
-      setIsDrawingPen(true); isDrawingPenRef.current = true
-      drawingPointerIdRef.current  = e.pointerId
-      drawingPointerTypeRef.current = e.pointerType
-      // setPointerCapture 제거 — iOS에서 Apple Pencil 이벤트 흐름 방해 가능성
-      if (livePathRef.current) {
-        livePathRef.current.setAttribute('d', `M ${pos.x} ${pos.y}`)
-        livePathRef.current.setAttribute('stroke', penColorRef.current)
-        livePathRef.current.setAttribute('stroke-width', String((penWidthRef.current / zoomRef2.current).toFixed(2)))
-      }
-      return
-    }
+    if (tool === 'pen') return // native listener가 처리 (iOS { passive: false } 호환)
 
     if (tool !== 'select') {
       const pos = screenToWorld(e.clientX, e.clientY)
@@ -530,44 +865,7 @@ export default function BoardCanvas() {
       const dx = e.clientX - panRef.current.startX; const dy = e.clientY - panRef.current.startY
       setPan({ x: panRef.current.origPanX + dx, y: panRef.current.origPanY + dy })
     }
-    if (isDrawingPenRef.current && livePathRef.current) {
-      // Apple Pencil 스트로크 중 터치(손바닥) pointermove 무시
-      if (drawingPointerTypeRef.current === 'pen' && e.pointerType === 'touch') return
-      // 드로잉 시작한 포인터 ID가 아니면 무시
-      if (drawingPointerIdRef.current !== null && e.pointerId !== drawingPointerIdRef.current) return
-
-      // 코얼레스드 이벤트로 고주파 입력 수집
-      // getCoalescedEvents()가 빈 배열을 반환하는 기기(Galaxy 등) 대응 — 현재 이벤트를 fallback으로 사용
-      const raw = (e.nativeEvent as PointerEvent).getCoalescedEvents?.() ?? []
-      const events = raw.length > 0 ? raw : [e.nativeEvent as PointerEvent]
-
-      const pts = drawingPointsRef.current
-      const prevLen = pts.length
-      for (const ce of events) {
-        pts.push(toWorld(ce.clientX, ce.clientY)) // 캐시된 rect 재사용 (getBoundingClientRect 반복 호출 없음)
-      }
-      if (pts.length < 2) return
-
-      // 증분 업데이트: 처음엔 전체, 이후엔 마지막 세그먼트만 추가 (빠른 쓰기 최적화)
-      if (prevLen < 2) {
-        // 초기 — 전체 path 재구성
-        let d = `M ${pts[0].x.toFixed(1)} ${pts[0].y.toFixed(1)}`
-        for (let i = 1; i < pts.length; i++) {
-          const p = pts[i - 1]; const c = pts[i]
-          d += ` Q ${p.x.toFixed(1)} ${p.y.toFixed(1)} ${((p.x + c.x) / 2).toFixed(1)} ${((p.y + c.y) / 2).toFixed(1)}`
-        }
-        livePathRef.current.setAttribute('d', d)
-      } else {
-        // 증분 — 기존 d에 새 세그먼트만 append
-        let d = livePathRef.current.getAttribute('d') ?? ''
-        for (let i = prevLen; i < pts.length; i++) {
-          const p = pts[i - 1]; const c = pts[i]
-          d += ` Q ${p.x.toFixed(1)} ${p.y.toFixed(1)} ${((p.x + c.x) / 2).toFixed(1)} ${((p.y + c.y) / 2).toFixed(1)}`
-        }
-        livePathRef.current.setAttribute('d', d)
-      }
-      // stroke 속성은 pointerdown 시 이미 설정됨 → 매 move 마다 반복 설정 불필요
-    }
+    // 펜 드로잉 pointermove는 native listener가 처리 (isDrawingPenRef.current = true일 때도 React는 건너뜀)
     if (isRectSelecting && selRectStartRef.current) {
       setSelRect({ x1: selRectStartRef.current.x, y1: selRectStartRef.current.y, x2: pos.x, y2: pos.y })
     }
@@ -598,38 +896,7 @@ export default function BoardCanvas() {
     if (isGesturingRef.current && e.pointerType === 'touch') return // 터치만 무시
     if (isPanning) { setIsPanning(false); panRef.current = null }
 
-    if (isDrawingPenRef.current) {
-      // 드로잉 시작한 포인터가 아닌 포인터의 up 이벤트는 무시 (손바닥이 먼저 들려도 스트로크 유지)
-      if (drawingPointerIdRef.current !== null && e.pointerId !== drawingPointerIdRef.current) return
-      setIsDrawingPen(false); isDrawingPenRef.current = false
-      drawingPointerIdRef.current = null
-      drawingPointerTypeRef.current = null  // 다음 스트로크가 항상 올바른 타입으로 시작되도록 초기화
-      const pts = drawingPointsRef.current
-      if (livePathRef.current) livePathRef.current.setAttribute('d', '')
-      if (pts.length >= 2) {
-        const xs = pts.map((p) => p.x); const ys = pts.map((p) => p.y)
-        const minX = Math.min(...xs); const minY = Math.min(...ys)
-        const maxX = Math.max(...xs); const maxY = Math.max(...ys)
-        const pad = 8
-        const rel = pts.map((p) => ({ x: p.x - minX + pad, y: p.y - minY + pad }))
-        let d = `M ${rel[0].x} ${rel[0].y}`
-        for (let i = 1; i < rel.length; i++) {
-          const p = rel[i - 1]; const c = rel[i]
-          d += ` Q ${p.x} ${p.y} ${(p.x + c.x) / 2} ${(p.y + c.y) / 2}`
-        }
-        const el: BoardElement = {
-          id: nanoid(), type: 'PEN',
-          x: minX - pad, y: minY - pad,
-          width: maxX - minX + pad * 2, height: maxY - minY + pad * 2,
-          content: d,
-          style: { strokeColor: penColorRef.current, strokeWidth: penWidthRef.current },
-          zIndex: zIndexCounter.current++,
-        }
-        addElement(el)
-        // 펜 모드: 선택하지 않고 계속 필기할 수 있도록 (툴바 표시 방지)
-      }
-      drawingPointsRef.current = []
-    }
+    // 펜 드로잉 pointerup/cancel은 native listener가 처리
 
     if (isRectSelecting) {
       setIsRectSelecting(false)
@@ -647,12 +914,19 @@ export default function BoardCanvas() {
 
     if (isDragging) {
       setIsDragging(false); isDraggingRef.current = false
-      setElements((cur) => { pushUndo(multiOrigSnapRef.current ?? cur); scheduleSave(cur); return cur })
+      setElements((cur) => {
+        // 드래그된 요소들을 dirty로 표시 → SSE merge 시 원격이 덮어쓰지 않음
+        cur.forEach((el) => { if (multiOrigRef.current?.has(el.id)) dirtyElementIdsRef.current.add(el.id) })
+        pushUndo(multiOrigSnapRef.current ?? cur); scheduleSave(cur); return cur
+      })
       multiOrigRef.current = null; dragStartRef.current = null; multiOrigSnapRef.current = null
     }
     if (isResizing) {
       setIsResizing(false); isResizingRef.current = false
-      setElements((cur) => { pushUndo(resizeSnapRef.current ?? cur); scheduleSave(cur); return cur })
+      setElements((cur) => {
+        const resizedId = selectedIds[0]; if (resizedId) dirtyElementIdsRef.current.add(resizedId)
+        pushUndo(resizeSnapRef.current ?? cur); scheduleSave(cur); return cur
+      })
       resizeRef.current = null; resizeSnapRef.current = null
     }
   }
@@ -675,6 +949,7 @@ export default function BoardCanvas() {
   function addElement(el: BoardElement) {
     setElements((p) => { pushUndo(p); const next = [...p, el]; scheduleSave(next); return next })
   }
+  addElementNativeRef.current = addElement // 매 렌더 동기화 (native pen handler용)
   function deleteElements(ids: string[]) {
     // 삭제 ID를 명시적으로 추적 → save 시 서버에 전달
     const merged = deletedIdsRef.current.concat(ids)
@@ -683,6 +958,7 @@ export default function BoardCanvas() {
     setSelectedIds([]); setEditingId(null)
   }
   function updateElement(elId: string, patch: Partial<BoardElement>) {
+    dirtyElementIdsRef.current.add(elId)
     setElements((p) => { const next = p.map((el) => el.id === elId ? { ...el, ...patch } : el); scheduleSave(next); return next })
   }
   function bringToFront(ids: string[]) {
@@ -738,26 +1014,36 @@ export default function BoardCanvas() {
 
   // ── Image upload ──────────────────────────────────────────────────
   async function handleImageFile(file: File) {
-    const fd = new FormData(); fd.append('file', file)
-    const res = await fetch('/api/upload', { method: 'POST', body: fd })
-    if (!res.ok) { toast.error('이미지 업로드 실패'); return }
-    const { url } = await res.json()
-    const rect = wrapperRef.current!.getBoundingClientRect()
-    const pos = screenToWorld(rect.left + rect.width / 2, rect.top + rect.height / 2)
-    addElement({ id: nanoid(), type: 'IMAGE', x: pos.x - 150, y: pos.y - 100, width: 300, height: 200, content: url, style: {}, zIndex: zIndexCounter.current++ })
+    try {
+      const fd = new FormData(); fd.append('file', file)
+      const res = await fetch('/api/upload', { method: 'POST', body: fd })
+      if (!res.ok) { toast.error('이미지 업로드 실패'); return }
+      const { url } = await res.json()
+      // async 완료 후 컴포넌트가 언마운트됐을 수 있음 → null 가드
+      const rect = wrapperRef.current?.getBoundingClientRect()
+      if (!rect) return
+      const p = panRef2.current; const z = zoomRef2.current
+      const pos = { x: (rect.left + rect.width / 2 - rect.left - p.x) / z, y: (rect.top + rect.height / 2 - rect.top - p.y) / z }
+      addElement({ id: nanoid(), type: 'IMAGE', x: pos.x - 150, y: pos.y - 100, width: 300, height: 200, content: url, style: {}, zIndex: zIndexCounter.current++ })
+    } catch (err) {
+      console.error('이미지 업로드 오류', err)
+      toast.error('이미지 업로드 실패')
+    }
   }
 
   useEffect(() => {
     function onPaste(e: ClipboardEvent) {
       const file = Array.from(e.clipboardData?.items ?? []).find((i) => i.type.startsWith('image/'))?.getAsFile()
-      if (file) handleImageFile(file)
+      if (file) handleImageFile(file).catch(() => {})
     }
     window.addEventListener('paste', onPaste)
     return () => window.removeEventListener('paste', onPaste)
   }, [pan, zoom]) // eslint-disable-line react-hooks/exhaustive-deps
 
   async function onFileChange(e: React.ChangeEvent<HTMLInputElement>) {
-    const file = e.target.files?.[0]; if (file) await handleImageFile(file); e.target.value = ''
+    const file = e.target.files?.[0]
+    if (file) await handleImageFile(file).catch(() => {})
+    e.target.value = ''
   }
 
   // ── Derived ───────────────────────────────────────────────────────
@@ -766,7 +1052,13 @@ export default function BoardCanvas() {
   const multiBounds = useMemo(() => {
     if (selectedIds.length < 2) return null
     const sel = elements.filter((el) => selectedIds.includes(el.id)); if (!sel.length) return null
-    return { x: Math.min(...sel.map(e => e.x)), y: Math.min(...sel.map(e => e.y)), right: Math.max(...sel.map(e => e.x + e.width)), bottom: Math.max(...sel.map(e => e.y + e.height)) }
+    let x = sel[0].x, y = sel[0].y, right = sel[0].x + sel[0].width, bottom = sel[0].y + sel[0].height
+    for (const e of sel) {
+      if (e.x < x) x = e.x; if (e.y < y) y = e.y
+      if (e.x + e.width > right) right = e.x + e.width
+      if (e.y + e.height > bottom) bottom = e.y + e.height
+    }
+    return { x, y, right, bottom }
   }, [elements, selectedIds])
   const presenceOthers = useMemo(() => Object.values(presence).filter((u) => u.userId !== session?.user?.id), [presence, session?.user?.id])
 
@@ -802,98 +1094,143 @@ export default function BoardCanvas() {
       onContextMenu={(e) => e.preventDefault()}>
 
       {/* ── Top Bar ── */}
-      <div className="flex items-center justify-between h-12 px-4 bg-surface border-b border-border shrink-0 z-30">
-        <div className="flex items-center gap-3">
-          <button onClick={() => { if (isDirty.current) save(elements); router.push('/boards') }}
-            className="flex items-center gap-1.5 text-text-secondary hover:text-text-primary text-sm transition-colors">
-            <ArrowLeft size={15} /> 보드 목록
+      <div className="flex items-center justify-between h-12 px-3 bg-surface border-b border-border shrink-0 z-30 gap-2">
+        {/* 왼쪽: 뒤로가기 + 보드명 */}
+        <div className="flex items-center gap-2 min-w-0">
+          <button onClick={() => { if (isDirty.current) save(elements).catch(() => {}); router.push('/boards') }}
+            className="flex items-center gap-1 text-text-secondary hover:text-text-primary text-sm transition-colors shrink-0">
+            <ArrowLeft size={15} />
+            <span className="hidden sm:inline">보드 목록</span>
           </button>
-          <div className="w-px h-4 bg-border" />
-          <div className="flex items-center gap-1.5">
-            <span className="text-text-primary font-semibold text-sm">{board.name}</span>
-            {board.isPublic ? <Globe size={12} className="text-muted" /> : <Lock size={12} className="text-muted" />}
+          <div className="w-px h-4 bg-border shrink-0" />
+          <div className="flex items-center gap-1.5 min-w-0">
+            <span className="text-text-primary font-semibold text-sm truncate max-w-[120px] sm:max-w-none">{board.name}</span>
+            {board.isPublic ? <Globe size={12} className="text-muted shrink-0" /> : <Lock size={12} className="text-muted shrink-0" />}
           </div>
         </div>
 
-        <div className="flex items-center gap-2">
-          <button onClick={() => save(elements)}
-            className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-accent/10 text-accent text-xs font-semibold hover:bg-accent/20 transition-colors">
-            <Save size={13} /> 저장
+        {/* 오른쪽: 저장 + 줌 + 참여자 토글 */}
+        <div className="flex items-center gap-1.5 shrink-0">
+          <button onClick={() => save(elements).catch(() => {})}
+            className="flex items-center gap-1 px-2 py-1.5 rounded-lg bg-accent/10 text-accent text-xs font-semibold hover:bg-accent/20 transition-colors">
+            <Save size={13} />
+            <span className="hidden sm:inline">저장</span>
           </button>
-          <div className="flex items-center gap-0.5 bg-surface-2 rounded-lg px-1 border border-border">
-            <button onClick={() => zoomTo(zoom / 1.2)} className="p-1.5 text-text-secondary hover:text-text-primary"><Minus size={13} /></button>
-            <button onClick={resetView} className="text-xs text-text-secondary hover:text-text-primary w-12 text-center">{Math.round(zoom * 100)}%</button>
-            <button onClick={() => zoomTo(zoom * 1.2)} className="p-1.5 text-text-secondary hover:text-text-primary"><Plus size={13} /></button>
+          <div className="flex items-center gap-0 bg-surface-2 rounded-lg px-1 border border-border">
+            <button onClick={() => zoomTo(zoom / 1.2)} className="p-1.5 text-text-secondary hover:text-text-primary"><Minus size={12} /></button>
+            <button onClick={resetView} className="text-[11px] text-text-secondary hover:text-text-primary w-10 text-center">{Math.round(zoom * 100)}%</button>
+            <button onClick={() => zoomTo(zoom * 1.2)} className="p-1.5 text-text-secondary hover:text-text-primary"><Plus size={12} /></button>
           </div>
+          {/* 참여자 패널 토글 (모바일 전용) */}
+          <button onClick={() => setShowPresencePanel((v) => !v)}
+            className={`relative p-2 rounded-lg border transition-colors md:hidden ${showPresencePanel ? 'bg-accent/10 border-accent/30 text-accent' : 'bg-surface-2 border-border text-text-secondary hover:text-text-primary'}`}>
+            <Users size={15} />
+            {presenceOthers.length > 0 && (
+              <span className="absolute -top-1 -right-1 w-4 h-4 rounded-full bg-accent text-white text-[9px] font-bold flex items-center justify-center leading-none">
+                {presenceOthers.length + 1}
+              </span>
+            )}
+          </button>
         </div>
       </div>
 
-      {/* ── Right Presence Panel ── */}
-      <div className="fixed right-4 top-16 z-30 w-44 bg-surface border border-border rounded-xl shadow-lg overflow-hidden">
+      {/* 팔로잉 중 배너 */}
+      {followingId && followingName && (
+        <div className="fixed z-50 flex items-center gap-2 px-3 py-2 rounded-xl bg-green-600 text-white text-xs font-semibold shadow-xl pointer-events-none border border-green-400/40"
+          style={{ top: '3.5rem', left: '50%', transform: 'translateX(-50%)', whiteSpace: 'nowrap' }}>
+          <div className="w-2 h-2 rounded-full bg-white animate-pulse shrink-0" />
+          <span>{followingName} 팔로잉 중</span>
+          <span className="text-green-200 text-[10px]">· ESC로 해제</span>
+        </div>
+      )}
+      {/* 팔로잉 중 화면 테두리 */}
+      {followingId && (
+        <div className="fixed inset-0 z-30 pointer-events-none" style={{ boxShadow: 'inset 0 0 0 3px #16a34a' }} />
+      )}
+
+      {/* ── Presence Panel ── 데스크탑: 항상 표시 / 모바일: 토글 */}
+      {/* 모바일 dimmed backdrop */}
+      {showPresencePanel && (
+        <div className="fixed inset-0 z-30 bg-black/20 md:hidden" onClick={() => setShowPresencePanel(false)} />
+      )}
+      <div className="fixed right-3 top-14 z-40 w-48 bg-surface border border-border rounded-xl shadow-xl flex flex-col"
+        style={{ maxHeight: 'calc(100dvh - 4rem)', display: (isDesktop || showPresencePanel) ? 'flex' : 'none' }}>
         {/* 헤더 */}
-        <div className="flex items-center justify-between px-3 py-2 border-b border-border">
-          <span className="text-[11px] font-semibold text-muted uppercase tracking-wide">참여자</span>
-          <div className="flex items-center gap-1">
+        <div className="flex items-center justify-between px-3 py-2 border-b border-border shrink-0">
+          <div className="flex items-center gap-1.5">
             <div className={`w-1.5 h-1.5 rounded-full ${sseConnected ? 'bg-green-400' : 'bg-gray-400 animate-pulse'}`} />
-            <span className="text-[10px] text-muted">{presenceOthers.length + 1}명</span>
+            <span className="text-[11px] font-semibold text-muted uppercase tracking-wide">참여자 {presenceOthers.length + 1}명</span>
           </div>
+          {/* 모바일에서만 닫기 버튼 표시 */}
+          <button onClick={() => setShowPresencePanel(false)} className="p-0.5 rounded text-muted hover:text-text-primary transition-colors md:hidden">
+            <X size={13} />
+          </button>
         </div>
 
-        {/* 내 아바타 */}
-        {session?.user && (
-          <div className="flex items-center gap-2 px-3 py-2 border-b border-border/50">
-            <div className="relative shrink-0">
-              <div className="w-7 h-7 rounded-full border-2 overflow-hidden" style={{ borderColor: '#3b82f6' }}>
-                <Avatar name={session.user.name} image={session.user.image} size={28} />
+        <div className="overflow-y-auto">
+          {/* 내 아바타 */}
+          {session?.user && (
+            <div className="flex items-center gap-2 px-3 py-2 border-b border-border/50">
+              <div className="relative shrink-0">
+                <div className="w-7 h-7 rounded-full border-2 overflow-hidden" style={{ borderColor: '#3b82f6' }}>
+                  <Avatar name={session.user.name} image={session.user.image} size={28} />
+                </div>
+                <div className={`absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 rounded-full border-2 border-surface ${sseConnected ? 'bg-green-400' : 'bg-gray-400'}`} />
               </div>
-              <div className={`absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 rounded-full border-2 border-surface ${sseConnected ? 'bg-green-400' : 'bg-gray-400'}`} />
+              <div className="min-w-0">
+                <p className="text-xs font-medium text-text-primary truncate">{session.user.name}</p>
+                <p className="text-[10px] text-muted">나</p>
+              </div>
             </div>
-            <div className="min-w-0">
-              <p className="text-xs font-medium text-text-primary truncate">{session.user.name}</p>
-              <p className="text-[10px] text-muted">나</p>
-            </div>
-          </div>
-        )}
+          )}
 
-        {/* 다른 참여자들 */}
-        {presenceOthers.length === 0 ? (
-          <div className="px-3 py-3 text-[11px] text-muted text-center">혼자 사용 중</div>
-        ) : (
-          <div className="py-1">
-            {presenceOthers.map((u) => (
-              <button key={u.userId}
-                onClick={() => setFollowingId(followingId === u.userId ? null : u.userId)}
-                className={`w-full flex items-center gap-2 px-3 py-1.5 hover:bg-surface-2 transition-colors text-left ${followingId === u.userId ? 'bg-accent/10' : ''}`}>
-                <div className="relative shrink-0">
-                  <div className="w-7 h-7 rounded-full border-2 overflow-hidden" style={{ borderColor: u.color }}>
-                    <Avatar name={u.name} image={u.image} size={28} />
+          {/* 다른 참여자들 */}
+          {presenceOthers.length === 0 ? (
+            <div className="px-3 py-3 text-[11px] text-muted text-center">혼자 사용 중</div>
+          ) : (
+            <div className="py-1">
+              {presenceOthers.map((u) => (
+                <button key={u.userId}
+                  onClick={() => {
+                    const isFollowing = followingId === u.userId
+                    setFollowingId(isFollowing ? null : u.userId)
+                    setFollowingName(isFollowing ? null : u.name)
+                    setShowPresencePanel(false)
+                  }}
+                  className={`w-full flex items-center gap-2 px-3 py-1.5 hover:bg-surface-2 transition-colors text-left ${followingId === u.userId ? 'bg-green-500/10' : ''}`}>
+                  <div className="relative shrink-0">
+                    <div className="w-7 h-7 rounded-full border-2 overflow-hidden" style={{ borderColor: u.color }}>
+                      <Avatar name={u.name} image={u.image} size={28} />
+                    </div>
+                    {followingId === u.userId && (
+                      <div className="absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 rounded-full bg-green-400 border-2 border-surface" />
+                    )}
                   </div>
-                  {followingId === u.userId && (
-                    <div className="absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 rounded-full bg-green-400 border-2 border-surface" />
-                  )}
-                </div>
-                <div className="min-w-0 flex-1">
-                  <p className="text-xs font-medium text-text-primary truncate">{u.name}</p>
-                  <p className="text-[10px] text-muted">{followingId === u.userId ? '👁 팔로잉 중' : '클릭해서 따라가기'}</p>
-                </div>
-              </button>
-            ))}
-          </div>
-        )}
+                  <div className="min-w-0 flex-1">
+                    <p className="text-xs font-medium text-text-primary truncate">{u.name}</p>
+                    <p className={`text-[10px] ${followingId === u.userId ? 'text-green-500 font-medium' : 'text-muted'}`}>
+                      {followingId === u.userId ? '👁 팔로잉 중' : '탭해서 따라가기'}
+                    </p>
+                  </div>
+                </button>
+              ))}
+            </div>
+          )}
 
-        {/* 팔로우 해제 버튼 */}
-        {followingId && (
-          <div className="px-2 pb-2">
-            <button onClick={() => setFollowingId(null)}
-              className="w-full flex items-center justify-center gap-1 px-2 py-1.5 rounded-lg bg-green-500/10 text-green-500 text-xs font-semibold hover:bg-green-500/20 transition-colors border border-green-500/20">
-              <X size={11} /> 팔로우 해제
-            </button>
-          </div>
-        )}
+          {/* 팔로우 해제 */}
+          {followingId && (
+            <div className="px-2 pb-2 pt-1 border-t border-border/50">
+              <button onClick={() => { setFollowingId(null); setFollowingName(null) }}
+                className="w-full flex items-center justify-center gap-1 px-2 py-1.5 rounded-lg bg-green-500/10 text-green-500 text-xs font-semibold hover:bg-green-500/20 transition-colors border border-green-500/20">
+                <X size={11} /> 팔로우 해제
+              </button>
+            </div>
+          )}
+        </div>
       </div>
 
-      {/* ── Left Toolbar ── */}
-      <div className="fixed left-4 top-1/2 -translate-y-1/2 z-30 flex flex-col gap-1 bg-surface border border-border rounded-xl p-1.5 shadow-lg">
+      {/* ── Left Toolbar (데스크탑) ── */}
+      <div className="hidden md:flex fixed left-4 top-1/2 -translate-y-1/2 z-30 flex-col gap-1 bg-surface border border-border rounded-xl p-1.5 shadow-lg" style={{ maxHeight: 'calc(100dvh - 6rem)', overflowY: 'auto' }}>
         {([
           { t: 'select' as Tool, Icon: MousePointer2, label: '선택 (V)' },
           { t: 'pen'    as Tool, Icon: Pen,           label: '그리기 (P)' },
@@ -955,9 +1292,59 @@ export default function BoardCanvas() {
         <button onClick={() => zoomTo(zoom / 1.2)} className="p-2.5 rounded-lg text-text-secondary hover:text-text-primary hover:bg-surface-2 transition-colors"><ZoomOut size={18} /></button>
       </div>
 
+      {/* ── Mobile Bottom Toolbar ── */}
+      <div className="md:hidden fixed bottom-0 left-0 right-0 z-30 bg-surface border-t border-border shadow-lg"
+        style={{ paddingBottom: 'env(safe-area-inset-bottom)' }}>
+        {/* 펜 색상/굵기 (펜 모드일 때만) */}
+        {tool === 'pen' && (
+          <div className="flex items-center gap-2 px-3 py-1.5 border-b border-border overflow-x-auto">
+            <div className="flex items-center gap-1 shrink-0">
+              {PEN_COLORS.map((c) => (
+                <button key={c} onClick={() => setPenColor(c)}
+                  className="rounded-full transition-transform"
+                  style={{ width: penColor === c ? 22 : 18, height: penColor === c ? 22 : 18, background: c, border: penColor === c ? '2px solid white' : '2px solid transparent', outline: penColor === c ? `2px solid ${c}` : 'none', flexShrink: 0 }} />
+              ))}
+            </div>
+            <div className="w-px h-5 bg-border shrink-0" />
+            <div className="flex items-center gap-1.5 shrink-0">
+              {[1, 2, 4, 8].map((w) => (
+                <button key={w} onClick={() => setPenWidth(w)}
+                  className={`flex items-center justify-center w-8 h-8 rounded-lg transition-colors ${penWidth === w ? 'bg-accent/20' : 'hover:bg-surface-2'}`}>
+                  <div className="rounded-full bg-text-primary" style={{ width: w + 4, height: w + 4 }} />
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+        {/* 툴 버튼 */}
+        <div className="flex items-center justify-around px-2 py-1">
+          {([
+            { t: 'select' as Tool, Icon: MousePointer2 },
+            { t: 'pen'    as Tool, Icon: Pen },
+            { t: 'text'   as Tool, Icon: Type },
+            { t: 'sticky' as Tool, Icon: StickyNote },
+            { t: 'shape'  as Tool, Icon: Shapes },
+            { t: 'image'  as Tool, Icon: ImageIcon },
+          ] as const).map(({ t, Icon }) => (
+            <button key={t}
+              onClick={() => {
+                setTool(t); setShowShapeMenu(t === 'shape' ? !showShapeMenu : false)
+                if (t === 'image') fileInputRef.current?.click()
+              }}
+              className={`flex flex-col items-center justify-center gap-0.5 p-2 rounded-xl transition-colors min-w-[44px] ${tool === t ? 'bg-accent text-white' : 'text-text-secondary'}`}>
+              <Icon size={20} />
+            </button>
+          ))}
+          <button onClick={resetView} className="flex flex-col items-center justify-center p-2 rounded-xl text-text-secondary min-w-[44px]">
+            <Maximize2 size={20} />
+          </button>
+        </div>
+      </div>
+
       {/* ── Single-element bottom toolbar ── */}
       {singleEl && !editingId && (
-        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-30 flex items-center gap-1.5 flex-wrap bg-surface border border-border rounded-xl px-3 py-2 shadow-xl max-w-[92vw] justify-center">
+        <div className="fixed left-1/2 -translate-x-1/2 z-30 flex items-center gap-1.5 flex-wrap bg-surface border border-border rounded-xl px-3 py-2 shadow-xl max-w-[92vw] justify-center"
+          style={{ bottom: `max(1.5rem, calc(env(safe-area-inset-bottom) + ${tool === 'pen' ? '6.5rem' : '4rem'}))` }}>
           {(singleEl.type === 'TEXT' || singleEl.type === 'STICKY') && (
             <button onClick={() => setEditingId(singleEl.id)} className="p-2 rounded-lg text-text-secondary hover:text-text-primary hover:bg-surface-2 transition-colors"><Pencil size={15} /></button>
           )}
@@ -1038,7 +1425,8 @@ export default function BoardCanvas() {
 
       {/* ── Multi-select toolbar ── */}
       {selectedIds.length > 1 && (
-        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-30 flex items-center gap-2 bg-surface border border-border rounded-xl px-4 py-2.5 shadow-xl">
+        <div className="fixed left-1/2 -translate-x-1/2 z-30 flex items-center gap-2 bg-surface border border-border rounded-xl px-4 py-2.5 shadow-xl"
+          style={{ bottom: `max(1.5rem, calc(env(safe-area-inset-bottom) + 4rem))` }}>
           <span className="text-sm font-semibold text-text-primary">{selectedIds.length}개 선택됨</span>
           <div className="w-px h-4 bg-border" />
           <button onClick={() => bringToFront(selectedIds)} className="p-2 rounded-lg text-text-secondary hover:text-text-primary hover:bg-surface-2 text-xs font-bold">↑</button>
@@ -1109,8 +1497,13 @@ export default function BoardCanvas() {
           )
         })}
 
-        {/* Transform container */}
-        <div style={{ transform: `translate(${pan.x}px, ${pan.y}px) scale(${zoom})`, transformOrigin: '0 0', position: 'absolute', top: 0, left: 0 }}>
+        {/* Transform container — 팔로잉 중(수동 조작 아닐 때)에만 smooth transition */}
+        <div style={{
+          transform: `translate(${pan.x}px, ${pan.y}px) scale(${zoom})`,
+          transformOrigin: '0 0', position: 'absolute', top: 0, left: 0,
+          transition: (followingId && !isPanning && !isDragging && !isResizing && !isDrawingPen)
+            ? 'transform 0.12s ease-out' : undefined,
+        }}>
           {/* Live pen stroke */}
           <svg style={{ position: 'absolute', top: 0, left: 0, overflow: 'visible', pointerEvents: 'none' }}>
             <path ref={livePathRef} stroke={penColor} strokeWidth={penWidth / zoom} fill="none" strokeLinecap="round" strokeLinejoin="round" />

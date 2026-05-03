@@ -8,16 +8,26 @@ import { TierBadge } from '@/components/ui/TierBadge'
 import { StreakChart } from '@/components/ui/StreakChart'
 import { PointLineChart } from '@/components/ui/PointLineChart'
 import { RadarChart } from '@/components/ui/RadarChart'
-import { Camera, UserMinus, Lock } from 'lucide-react'
+import { Camera, UserMinus, Lock, Bookmark, ShieldCheck, ShoppingBag, Image as ImageIcon, CheckCircle2 } from 'lucide-react'
 import { getTier } from '@/lib/scoring'
 import toast from 'react-hot-toast'
 
 interface RivalUser { id: string; name?: string | null; image?: string | null; points: number }
+interface BannerItem { id: string; name: string; description: string; imageUrl: string; price: number; isActive: boolean }
+interface OwnedBanner { id: string; bannerItemId: string; isEquipped: boolean; bannerItem: BannerItem }
+interface ShopData {
+  shopPoints: number
+  streakShieldsOwned: number
+  shieldPrice: number
+  banners: BannerItem[]
+  ownedBanners: OwnedBanner[]
+}
 interface ProfileData {
   streakMap: Record<string, number>
   pointTimeline: { date: string; points: number }[]
   radarData: { label: string; value: number }[]
   solvedProblems: { id: string; problemNumber: number; title: string; subject: string | null }[]
+  bookmarkedProblems: { id: string; problemNumber: number; title: string; subject: string | null; approvedPts: number | null }[]
   isMaster: boolean
   isFirstRuby: boolean
 }
@@ -35,7 +45,7 @@ export default function ProfilePage() {
   const [profileData, setProfileData] = useState<ProfileData | null>(null)
   const [rivals, setRivals] = useState<RivalUser[]>([])
   const [streakYear, setStreakYear] = useState(new Date().getFullYear())
-  const [streakData, setStreakData] = useState<{ streakMap: Record<string, number>; streak: number } | null>(null)
+  const [streakData, setStreakData] = useState<{ streakMap: Record<string, number>; streak: number; shieldMap?: Record<string, boolean> } | null>(null)
   const [pointYear, setPointYear] = useState(new Date().getFullYear())
   const [pointData, setPointData] = useState<{ date: string; points: number }[]>([])
 
@@ -45,6 +55,12 @@ export default function ProfilePage() {
   const [newPw, setNewPw] = useState('')
   const [confirmPw, setConfirmPw] = useState('')
   const [pwLoading, setPwLoading] = useState(false)
+
+  // Shop
+  const [shopData, setShopData] = useState<ShopData | null>(null)
+  const [shopOpen, setShopOpen] = useState(false)
+  const [buyingId, setBuyingId] = useState<string | null>(null)
+  const [equippingId, setEquippingId] = useState<string | null>(null)
 
   async function loadStreak(userId: string, year: number) {
     const res = await fetch(`/api/users/${userId}/streak?year=${year}`)
@@ -56,6 +72,11 @@ export default function ProfilePage() {
     if (res.ok) { const d = await res.json(); setPointData(d.timeline) }
   }
 
+  async function loadShop() {
+    const res = await fetch('/api/shop')
+    if (res.ok) setShopData(await res.json())
+  }
+
   useEffect(() => {
     if (!session?.user) return
     setName(session.user.name ?? '')
@@ -64,6 +85,7 @@ export default function ProfilePage() {
     fetch('/api/rivals').then((r) => r.json()).then(setRivals)
     loadStreak(session.user.id, streakYear)
     loadPoints(session.user.id, pointYear)
+    loadShop()
   }, [session])
 
   if (!session?.user) { router.replace('/login'); return null }
@@ -130,8 +152,38 @@ export default function ProfilePage() {
     toast.success('라이벌 해제')
   }
 
+  async function buyItem(type: 'shield' | 'banner', itemId?: string) {
+    setBuyingId(type === 'shield' ? 'shield' : (itemId ?? ''))
+    try {
+      const res = await fetch('/api/shop', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ type, itemId }),
+      })
+      const d = await res.json()
+      if (!res.ok) { toast.error(d.error ?? '구매 실패'); return }
+      toast.success(d.message ?? '구매 완료')
+      loadShop()
+    } finally { setBuyingId(null) }
+  }
+
+  async function equipBanner(bannerItemId: string, equip: boolean) {
+    setEquippingId(bannerItemId)
+    try {
+      const res = await fetch('/api/shop/equip', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ bannerItemId, equip }),
+      })
+      if (!res.ok) { toast.error('처리 실패'); return }
+      toast.success(equip ? '배너를 장착했습니다' : '배너를 해제했습니다')
+      loadShop()
+    } finally { setEquippingId(null) }
+  }
+
   const tier = getTier(session.user.points ?? 0)
   const displayImage = previewUrl ?? image
+  const equippedBanner = shopData?.ownedBanners.find((b) => b.isEquipped)
 
   return (
     <div className="max-w-2xl mx-auto px-4 py-10 space-y-5">
@@ -139,6 +191,12 @@ export default function ProfilePage() {
 
       {/* Profile settings */}
       <div className="bg-surface border border-border rounded-2xl p-6 space-y-5">
+        {/* Equipped banner */}
+        {equippedBanner && (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img src={equippedBanner.bannerItem.imageUrl} alt={equippedBanner.bannerItem.name}
+            className="w-full h-24 object-cover rounded-xl border border-border" />
+        )}
         <div className="flex items-center gap-4">
           <div className="relative shrink-0">
             {displayImage ? (
@@ -211,6 +269,118 @@ export default function ProfilePage() {
             </div>
           )}
         </div>
+
+        {/* Point Shop toggle */}
+        <div className="border-t border-border pt-4">
+          <button onClick={() => setShopOpen((v) => !v)}
+            className="flex items-center gap-1.5 text-sm text-text-secondary hover:text-text-primary transition-colors whitespace-nowrap w-full justify-between">
+            <span className="flex items-center gap-1.5">
+              <ShoppingBag size={13} />
+              포인트 상점
+              {shopData && (
+                <span className="ml-1 text-xs font-semibold text-blue-400">
+                  {shopData.shopPoints.toLocaleString()}p
+                </span>
+              )}
+            </span>
+            <span className="text-xs text-muted">{shopOpen ? '▲' : '▼'}</span>
+          </button>
+
+          {shopOpen && shopData && (
+            <div className="mt-4 space-y-4">
+              {/* Balance */}
+              <div className="flex items-center justify-between p-3 bg-blue-500/5 border border-blue-500/20 rounded-xl">
+                <div>
+                  <p className="text-xs text-text-secondary font-medium">상점 포인트</p>
+                  <p className="text-lg font-bold text-blue-400">{shopData.shopPoints.toLocaleString()} <span className="text-sm font-normal">p</span></p>
+                  <p className="text-[10px] text-muted mt-0.5">문제 승인 시 지급 · 일반 포인트와 별개</p>
+                </div>
+                <div className="text-right">
+                  <p className="text-xs text-text-secondary font-medium">보유 보호막</p>
+                  <p className="text-lg font-bold text-blue-400 flex items-center gap-1 justify-end">
+                    <ShieldCheck size={16} /> {shopData.streakShieldsOwned}
+                  </p>
+                </div>
+              </div>
+
+              {/* Shield buy */}
+              <div>
+                <p className="text-xs font-semibold text-text-secondary mb-2">아이템</p>
+                <div className="border border-border rounded-xl p-3 flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-lg bg-blue-500/10 flex items-center justify-center shrink-0">
+                    <ShieldCheck size={20} className="text-blue-400" />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-semibold text-text-primary">스트릭 보호막</p>
+                    <p className="text-xs text-muted">하루 빠진 스트릭을 자동으로 보호합니다</p>
+                  </div>
+                  <div className="text-right shrink-0">
+                    <p className="text-sm font-bold text-blue-400">{shopData.shieldPrice}p</p>
+                    <button
+                      onClick={() => buyItem('shield')}
+                      disabled={buyingId === 'shield' || shopData.shopPoints < shopData.shieldPrice}
+                      className="mt-1 text-xs px-3 py-1 rounded-lg bg-blue-500 text-white font-semibold hover:bg-blue-600 transition-colors disabled:opacity-40 whitespace-nowrap">
+                      {buyingId === 'shield' ? '구매 중...' : '구매'}
+                    </button>
+                  </div>
+                </div>
+              </div>
+
+              {/* Banner items */}
+              {shopData.banners.length > 0 && (
+                <div>
+                  <p className="text-xs font-semibold text-text-secondary mb-2">배너</p>
+                  <div className="space-y-2">
+                    {shopData.banners.map((banner) => {
+                      const owned = shopData.ownedBanners.find((ob) => ob.bannerItemId === banner.id)
+                      const isEquipped = owned?.isEquipped ?? false
+                      return (
+                        <div key={banner.id} className="border border-border rounded-xl overflow-hidden">
+                          {/* eslint-disable-next-line @next/next/no-img-element */}
+                          <img src={banner.imageUrl} alt={banner.name} className="w-full h-20 object-cover" />
+                          <div className="p-3 flex items-center gap-3">
+                            <div className="flex-1 min-w-0">
+                              <p className="text-sm font-semibold text-text-primary">{banner.name}</p>
+                              {banner.description && <p className="text-xs text-muted truncate">{banner.description}</p>}
+                            </div>
+                            <div className="text-right shrink-0">
+                              {owned ? (
+                                <button
+                                  onClick={() => equipBanner(banner.id, !isEquipped)}
+                                  disabled={equippingId === banner.id}
+                                  className={`text-xs px-3 py-1 rounded-lg font-semibold transition-colors disabled:opacity-40 whitespace-nowrap flex items-center gap-1 ${
+                                    isEquipped
+                                      ? 'bg-emerald-500/10 text-emerald-500 border border-emerald-500/30 hover:bg-emerald-500/20'
+                                      : 'bg-surface-2 border border-border text-text-secondary hover:text-text-primary'
+                                  }`}>
+                                  {equippingId === banner.id ? '...' : isEquipped ? <><CheckCircle2 size={12} /> 장착중</> : <><ImageIcon size={12} /> 장착</>}
+                                </button>
+                              ) : (
+                                <div className="flex flex-col items-end gap-1">
+                                  <p className="text-sm font-bold text-blue-400">{banner.price}p</p>
+                                  <button
+                                    onClick={() => buyItem('banner', banner.id)}
+                                    disabled={buyingId === banner.id || shopData.shopPoints < banner.price}
+                                    className="text-xs px-3 py-1 rounded-lg bg-blue-500 text-white font-semibold hover:bg-blue-600 transition-colors disabled:opacity-40 whitespace-nowrap">
+                                    {buyingId === banner.id ? '구매 중...' : '구매'}
+                                  </button>
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+                      )
+                    })}
+                  </div>
+                </div>
+              )}
+
+              {shopData.banners.length === 0 && (
+                <p className="text-xs text-muted text-center py-3">등록된 배너 아이템이 없습니다</p>
+              )}
+            </div>
+          )}
+        </div>
       </div>
 
       {/* Streak */}
@@ -224,6 +394,7 @@ export default function ProfilePage() {
             streakMap={streakData?.streakMap ?? profileData.streakMap ?? {}}
             year={streakYear}
             streak={streakData?.streak ?? 0}
+            shieldMap={streakData?.shieldMap ?? {}}
             onYearChange={(y) => { setStreakYear(y); if (session?.user) loadStreak(session.user.id, y) }}
           />
           <div className="border-t border-border pt-4">
@@ -234,22 +405,39 @@ export default function ProfilePage() {
               onYearChange={(y) => { setPointYear(y); if (session?.user) loadPoints(session.user.id, y) }}
             />
           </div>
-          <div className="border-t border-border pt-4">
-            <p className="text-xs text-text-secondary mb-2 font-medium">
+          <div className="border-t border-border pt-4 space-y-3">
+            <p className="text-xs text-text-secondary font-medium">
               푼 문제 <span className="text-muted font-normal">({profileData.solvedProblems.length})</span>
             </p>
             {profileData.solvedProblems.length === 0 ? (
-              <p className="text-xs text-muted py-2">아직 푼 문제가 없습니다</p>
+              <p className="text-xs text-muted py-1">아직 푼 문제가 없습니다</p>
             ) : (
               <div className="flex flex-wrap gap-1.5">
                 {profileData.solvedProblems.map((p) => (
-                  <Link
-                    key={p.id}
-                    href={`/problems/${p.id}`}
-                    className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs bg-emerald-500/10 text-emerald-500 hover:bg-emerald-500/20 transition-colors border border-emerald-500/20"
-                  >
+                  <Link key={p.id} href={`/problems/${p.id}`}
+                    className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs bg-emerald-500/10 text-emerald-500 hover:bg-emerald-500/20 transition-colors border border-emerald-500/20">
                     <span className="font-mono font-semibold">#{p.problemNumber}</span>
                     <span className="text-emerald-400/80 truncate max-w-[120px]">{p.title}</span>
+                  </Link>
+                ))}
+              </div>
+            )}
+
+            {/* 저장한 문제 */}
+            <p className="text-xs text-text-secondary font-medium pt-2 border-t border-border/50 flex items-center gap-1.5">
+              <Bookmark size={11} className="text-amber-500" />
+              저장한 문제 <span className="text-muted font-normal">({profileData.bookmarkedProblems?.length ?? 0})</span>
+            </p>
+            {(profileData.bookmarkedProblems?.length ?? 0) === 0 ? (
+              <p className="text-xs text-muted py-1">저장한 문제가 없습니다</p>
+            ) : (
+              <div className="flex flex-wrap gap-1.5">
+                {profileData.bookmarkedProblems.map((p) => (
+                  <Link key={p.id} href={`/problems/${p.id}`}
+                    className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs bg-amber-500/10 text-amber-600 hover:bg-amber-500/20 transition-colors border border-amber-500/20">
+                    <Bookmark size={9} className="fill-amber-500 text-amber-500" />
+                    <span className="font-mono font-semibold">#{p.problemNumber}</span>
+                    <span className="text-amber-500/80 truncate max-w-[120px]">{p.title}</span>
                   </Link>
                 ))}
               </div>

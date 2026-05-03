@@ -290,7 +290,7 @@ export default function ProblemSetDetailPage() {
                 <div className="flex items-center justify-center text-sm font-medium text-muted">{idx + 1}</div>
 
                 {/* Problem info */}
-                <Link href={`/problems/${p.id}`} className="flex items-center gap-3 min-w-0">
+                <Link href={`/problems/${p.id}?from=/problems/sets/${id}`} className="flex items-center gap-3 min-w-0">
                   <div className="min-w-0">
                     <div className="flex items-center gap-2 mb-0.5 flex-wrap">
                       <span className="text-xs font-mono font-semibold text-accent">#{p.problemNumber}</span>

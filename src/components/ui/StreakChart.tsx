@@ -1,14 +1,18 @@
 'use client'
-import { ChevronLeft, ChevronRight, Flame } from 'lucide-react'
+import { ChevronLeft, ChevronRight, Flame, ShieldCheck } from 'lucide-react'
 
 interface Props {
   streakMap: Record<string, number>
   year: number
   streak: number
   onYearChange: (y: number) => void
+  shieldMap?: Record<string, boolean>
 }
 
-export function StreakChart({ streakMap, year, streak, onYearChange }: Props) {
+const y = new Date().toLocaleDateString('sv-SE', { timeZone: 'Asia/Seoul' }).slice(0, 4)
+const HOLIDAYS = new Set([`${y}-04-30`, `${y}-05-01`, `${y}-05-02`, `${y}-05-03`])
+
+export function StreakChart({ streakMap, year, streak, onYearChange, shieldMap = {} }: Props) {
   const today = new Date()
   today.setHours(0, 0, 0, 0)
   const todayStr = today.toLocaleDateString('sv-SE', { timeZone: 'Asia/Seoul' })
@@ -40,9 +44,11 @@ export function StreakChart({ streakMap, year, streak, onYearChange }: Props) {
     weeks.push(week)
   }
 
-  function getColor(count: number) {
+  function getColor(count: number, date: string) {
     if (count === -2) return 'bg-transparent'
     if (count === -1) return 'bg-transparent'
+    // Shield or holiday — show blue when no activity
+    if (count === 0 && (shieldMap[date] || HOLIDAYS.has(date))) return 'bg-blue-400 dark:bg-blue-600'
     if (count === 0) return 'bg-border'
     if (count === 1) return 'bg-emerald-200 dark:bg-emerald-900'
     if (count === 2) return 'bg-emerald-400 dark:bg-emerald-700'
@@ -50,9 +56,17 @@ export function StreakChart({ streakMap, year, streak, onYearChange }: Props) {
     return 'bg-emerald-700 dark:bg-emerald-300'
   }
 
+  function getTitle(count: number, date: string) {
+    if (count < 0) return ''
+    if (count === 0 && HOLIDAYS.has(date)) return `${date}: 공휴일 (스트릭 보호됨)`
+    if (count === 0 && shieldMap[date]) return `${date}: 보호막 사용됨`
+    return `${date}: ${count}개`
+  }
+
   const months = ['1월','2월','3월','4월','5월','6월','7월','8월','9월','10월','11월','12월']
   const days = ['일','월','화','수','목','금','토']
   const totalContribs = Object.values(streakMap).reduce((a, b) => a + b, 0)
+  const shieldDaysInYear = Object.keys(shieldMap).filter((d) => d.startsWith(`${year}-`)).length
 
   return (
     <div className="space-y-2">
@@ -66,6 +80,11 @@ export function StreakChart({ streakMap, year, streak, onYearChange }: Props) {
           {streak > 0 && year === currentYear && (
             <span className="flex items-center gap-1 text-orange-500 font-semibold">
               <Flame size={12} className="fill-orange-500" /> {streak}일 연속
+            </span>
+          )}
+          {shieldDaysInYear > 0 && (
+            <span className="flex items-center gap-1 text-blue-400">
+              <ShieldCheck size={12} /> {shieldDaysInYear}일 보호
             </span>
           )}
           <span>{totalContribs}개 기여</span>
@@ -88,8 +107,8 @@ export function StreakChart({ streakMap, year, streak, onYearChange }: Props) {
               {week.map((day) => (
                 <div
                   key={day.date}
-                  title={day.count >= 0 ? `${day.date}: ${day.count}개` : ''}
-                  className={`w-[10px] h-[10px] rounded-sm ${getColor(day.count)} transition-colors ${day.date === todayStr ? 'ring-1 ring-accent ring-offset-1 ring-offset-background' : ''}`}
+                  title={getTitle(day.count, day.date)}
+                  className={`w-[10px] h-[10px] rounded-sm ${getColor(day.count, day.date)} transition-colors ${day.date === todayStr ? 'ring-1 ring-accent ring-offset-1 ring-offset-background' : ''}`}
                 />
               ))}
             </div>

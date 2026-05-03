@@ -33,8 +33,9 @@ export async function GET(req: NextRequest, { params }: { params: { id: string }
 
       // Listen for board events
       function onEvent(event: BoardSSEEvent) {
-        // Don't echo cursor back to sender
-        if (event.type === 'cursor' && event.userId === userId) return
+        // cursor, elements 이벤트는 자기 자신에게 echo 안 함
+        // (cursor: 불필요, elements: 클라이언트가 이미 로컬 적용 완료)
+        if ((event.type === 'cursor' || event.type === 'elements') && event.userId === userId) return
         try {
           controller.enqueue(encoder.encode(`data: ${JSON.stringify(event)}\n\n`))
         } catch {
