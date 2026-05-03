@@ -2,6 +2,7 @@
 
 수학·과학 문제를 출제하고 풀며 포인트를 쌓는 학습 커뮤니티 플랫폼입니다.  
 Next.js 14 + SQLite(Prisma) + Docker 기반으로 동작합니다.
+https://github.com/jeehoo0507/Minlluminati/issues/1#issue-4372055828
 
 ---
 
