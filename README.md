@@ -3,8 +3,7 @@
 수학·과학 문제를 출제하고 풀며 포인트를 쌓는 학습 커뮤니티 플랫폼입니다.  
 Next.js 14 + SQLite(Prisma) + Docker 기반으로 동작합니다.
 
-<img width="1175" height="758" alt="Image" src="https://github.com/user-attachments/assets/9ebb9c17-8976-4636-b1d7-07c0742e8104" />
-
+<img width="984" height="655" alt="Image" src="https://github.com/user-attachments/assets/c6289b92-1922-4aa3-9ade-8adea2b045df" />
 ---
 
 ## 목차
