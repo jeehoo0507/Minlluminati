@@ -49,6 +49,33 @@ async function finishContest(id: string) {
         },
       })
 
+      // ── 출제 보상: 자동 승인 포인트 → 총괄자에게 상점 포인트 지급 ──
+      if (cp.points && cp.points > 0) {
+        await prisma.$transaction([
+          prisma.user.update({
+            where: { id: c.organizerId },
+            data: { shopPoints: { increment: cp.points } },
+          }),
+          prisma.pointHistory.create({
+            data: {
+              userId: c.organizerId,
+              delta: cp.points,
+              reason: `대회 문제 출제 보상: ${cp.title}`,
+              subject: `대회 "${c.title}"`,
+            },
+          }),
+          prisma.notification.create({
+            data: {
+              userId: c.organizerId,
+              type: 'PROBLEM_APPROVED',
+              title: '문제 출제 보상 지급',
+              content: `대회 "${c.title}" 종료 — 문제 "${cp.title}" 출제 보상으로 상점 포인트 +${cp.points}pt가 지급되었습니다.`,
+              link: `/problems/${newProblem.id}`,
+            },
+          }),
+        ])
+      }
+
       // ── 서술형: 대회 중 승인된 답안 → 일반 문제 풀이·정답 이전 ──
       if (cp.isEssay && cp.essaySubmissions.length > 0) {
         const approved = cp.essaySubmissions.filter((s) => s.status === 'APPROVED')

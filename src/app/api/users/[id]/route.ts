@@ -3,6 +3,7 @@ import { prisma } from '@/lib/db'
 import { getAuth } from '@/lib/auth'
 import { SUBJECTS } from '@/lib/utils'
 import { MASTER_COUNT, getFirstRubyUserId } from '@/lib/scoring'
+import { awardBadge } from '@/lib/awardBadge'
 
 export const dynamic = 'force-dynamic'
 
@@ -111,6 +112,18 @@ export async function GET(_: NextRequest, { params }: { params: { id: string } }
 
   // Bookmarked problems (본인 프로필에서만)
   const isOwn = session?.user?.id === userId
+
+  // 변태 뱃지: 로그인한 유저가 타인 프로필을 조회할 때마다 카운트 +1, 50회 달성 시 지급
+  if (session?.user && !isOwn) {
+    prisma.user.update({
+      where: { id: session.user.id },
+      data: { profileViewCount: { increment: 1 } },
+    }).then(async (updated) => {
+      if (updated.profileViewCount >= 50) {
+        await awardBadge(session!.user!.id, 'hidden_stalker').catch(() => {})
+      }
+    }).catch(() => {})
+  }
   const bookmarkedProblems = isOwn
     ? await prisma.problemBookmark.findMany({
         where: { userId },

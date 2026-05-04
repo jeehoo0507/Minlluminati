@@ -1484,6 +1484,26 @@ export default function AdminPage() {
         <div className="space-y-5" ref={(el) => { if (el && adminBadges.length === 0) loadAdminBadges() }}>
           <input ref={badgeImgRef} type="file" accept="image/*" className="hidden" onChange={handleBadgeImageUpload} />
 
+          {/* 뱃지 DB 시드 */}
+          <div className="bg-surface border border-border rounded-2xl p-5 flex items-center justify-between gap-4">
+            <div>
+              <p className="text-sm font-semibold text-text-primary">뱃지 DB 시드</p>
+              <p className="text-xs text-muted mt-0.5">코드에 정의된 뱃지 목록을 DB에 등록(업서트)합니다. 배포 후 뱃지 0개로 뜰 때 실행하세요.</p>
+            </div>
+            <button
+              onClick={async () => {
+                const res = await fetch('/api/admin/badges/seed', { method: 'POST' })
+                const d = await res.json()
+                if (res.ok) {
+                  toast.success(`완료: ${d.seeded}개 뱃지 시드됨`)
+                  loadAdminBadges()
+                } else toast.error('오류 발생')
+              }}
+              className="shrink-0 px-4 py-2 rounded-lg bg-blue-600 text-white text-sm font-semibold hover:bg-blue-700 transition-colors">
+              시드 실행
+            </button>
+          </div>
+
           {/* 소급 지급 */}
           <div className="bg-surface border border-border rounded-2xl p-5 flex items-center justify-between gap-4">
             <div>

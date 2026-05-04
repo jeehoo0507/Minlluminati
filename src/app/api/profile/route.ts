@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getAuth } from '@/lib/auth'
 import { prisma } from '@/lib/db'
 import bcrypt from 'bcryptjs'
+import { awardBadge } from '@/lib/awardBadge'
 
 export const dynamic = 'force-dynamic'
 
@@ -59,5 +60,11 @@ export async function PATCH(req: NextRequest) {
     },
     select: { id: true, name: true, email: true, image: true },
   })
+
+  // 이미지 메이커: 프로필 사진 변경 시 지급
+  if (image !== undefined) {
+    awardBadge(session.user.id, 'hidden_image_maker').catch(() => {})
+  }
+
   return NextResponse.json(updated)
 }

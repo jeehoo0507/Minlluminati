@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/db'
 import { getAuth } from '@/lib/auth'
 import { awardLikePoints, revokeLikePoints, POINTS } from '@/lib/scoring'
+import { checkPopularBadge } from '@/lib/awardBadge'
 
 async function getLikePoints(): Promise<number> {
   const cfg = await prisma.systemConfig.findUnique({ where: { key: 'points' } })
@@ -50,6 +51,8 @@ export async function POST(_: NextRequest, { params }: { params: { id: string } 
     })
     await awardLikePoints(post.authorId, post.id, post.subject, likePoints)
     const count = await prisma.like.count({ where: { postId: post.id } })
+    // 주딱 뱃지: 하트 10개 이상 받은 글이 있으면 지급
+    checkPopularBadge(post.authorId).catch(() => {})
     return NextResponse.json({ liked: true, count, likePoints })
   }
 }

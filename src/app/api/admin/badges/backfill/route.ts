@@ -12,29 +12,67 @@ export async function POST() {
 
   const users = await prisma.user.findMany({ select: { id: true } })
   let awarded = 0
+  const errors: string[] = []
 
   for (const { id: userId } of users) {
-    // ── 문제 풀기 ──────────────────────────────────────────────────
-    const solveCount = await prisma.problemSubmission.count({ where: { userId, correct: true } })
-    for (const n of [1, 50, 100, 200, 300, 500, 1000]) {
-      if (solveCount >= n && await awardBadge(userId, `solve_${n}`)) awarded++
-    }
+    try {
+      // ── 문제 풀기 ──────────────────────────────────────────────────
+      const solveCount = await prisma.problemSubmission.count({ where: { userId, correct: true } })
+      for (const n of [1, 50, 100, 200, 300, 500, 1000]) {
+        if (solveCount >= n) {
+          try {
+            if (await awardBadge(userId, `solve_${n}`)) awarded++
+          } catch (e) { errors.push(`solve_${n}@${userId}: ${e}`) }
+        }
+      }
 
-    // ── 문제 출제 ──────────────────────────────────────────────────
-    const uploadCount = await prisma.problem.count({ where: { authorId: userId } })
-    for (const n of [1, 10, 50, 100]) {
-      if (uploadCount >= n && await awardBadge(userId, `upload_${n}`)) awarded++
-    }
+      // ── 문제 출제 ──────────────────────────────────────────────────
+      const uploadCount = await prisma.problem.count({ where: { authorId: userId } })
+      for (const n of [1, 10, 50, 100]) {
+        if (uploadCount >= n) {
+          try {
+            if (await awardBadge(userId, `upload_${n}`)) awarded++
+          } catch (e) { errors.push(`upload_${n}@${userId}: ${e}`) }
+        }
+      }
 
-    // ── 피드 글 ────────────────────────────────────────────────────
-    const feedCount = await prisma.post.count({ where: { authorId: userId, deletedAt: null } })
-    for (const n of [1, 5, 10, 100]) {
-      if (feedCount >= n && await awardBadge(userId, `feed_${n}`)) awarded++
-    }
+      // ── 피드 글 ────────────────────────────────────────────────────
+      const feedCount = await prisma.post.count({ where: { authorId: userId, deletedAt: null } })
+      for (const n of [1, 5, 10, 100]) {
+        if (feedCount >= n) {
+          try {
+            if (await awardBadge(userId, `feed_${n}`)) awarded++
+          } catch (e) { errors.push(`feed_${n}@${userId}: ${e}`) }
+        }
+      }
 
-    // ── 하트 10개 이상 (주딱 - 히든이지만 여기선 체크) ─────────────
-    // 히든이므로 별도 트리거로 처리 (backfill에서는 스킵)
+      // ── 주딱: 하트 10개 이상 받은 글 있는지 ──────────────────────
+      try {
+        const popularPost = await prisma.post.findFirst({
+          where: { authorId: userId, deletedAt: null, likes: { some: {} } },
+          select: { _count: { select: { likes: true } } },
+          orderBy: { likes: { _count: 'desc' } },
+        })
+        if (popularPost && popularPost._count.likes >= 10) {
+          if (await awardBadge(userId, 'hidden_popular')) awarded++
+        }
+      } catch (e) { errors.push(`popular@${userId}: ${e}`) }
+
+      // ── 도박왕: "겜블러" 문제 정답 기록 있는지 ───────────────────
+      try {
+        const gamblerProblem = await prisma.problem.findFirst({ where: { title: '겜블러' } })
+        if (gamblerProblem) {
+          const solved = await prisma.problemSubmission.findUnique({
+            where: { problemId_userId: { problemId: gamblerProblem.id, userId } },
+          })
+          if (solved?.correct && await awardBadge(userId, 'hidden_gambler')) awarded++
+        }
+      } catch (e) { errors.push(`gambler@${userId}: ${e}`) }
+
+    } catch (e) {
+      errors.push(`user ${userId}: ${e}`)
+    }
   }
 
-  return NextResponse.json({ ok: true, awarded, users: users.length })
+  return NextResponse.json({ ok: true, awarded, users: users.length, errors })
 }

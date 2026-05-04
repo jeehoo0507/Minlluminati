@@ -85,6 +85,9 @@ model User {
   selectedTitleId   String?               // badge ID of selected title
   userBadges        UserBadge[]
 
+  // Hidden badge tracking
+  profileViewCount  Int      @default(0)  // 이 유저가 타인 프로필을 조회한 횟수 (변태 뱃지)
+
   @@map("users")
 }
 
@@ -405,6 +408,7 @@ model ProblemSubmission {
   userId    String
   answer    String
   correct   Boolean  @default(false)
+  wrongCount Int     @default(0)  // 오답 누적 횟수 (병 GOD 뱃지)
   problem   Problem  @relation(fields: [problemId], references: [id], onDelete: Cascade)
   user      User     @relation("UserProblemSubs", fields: [userId], references: [id], onDelete: Cascade)
   createdAt DateTime @default(now())

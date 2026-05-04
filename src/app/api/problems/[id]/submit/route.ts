@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/db'
 import { getAuth } from '@/lib/auth'
-import { checkSolveBadges } from '@/lib/awardBadge'
+import { checkSolveBadges, awardBadge } from '@/lib/awardBadge'
 
 export const dynamic = 'force-dynamic'
 
@@ -64,11 +64,11 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
   })
   const wasAlreadyCorrect = existing?.correct ?? false
 
-  // Upsert submission
+  // Upsert submission (오답이면 wrongCount 증가)
   await prisma.problemSubmission.upsert({
     where: { problemId_userId: { problemId: params.id, userId: session.user.id } },
-    create: { problemId: params.id, userId: session.user.id, answer: storedAnswer, correct },
-    update: { answer: storedAnswer, correct },
+    create: { problemId: params.id, userId: session.user.id, answer: storedAnswer, correct, wrongCount: correct ? 0 : 1 },
+    update: { answer: storedAnswer, correct, ...((!correct && !wasAlreadyCorrect) ? { wrongCount: { increment: 1 } } : {}) },
   })
 
   // Award points only on first correct submission (authors cannot earn from their own problems)
@@ -115,6 +115,20 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
   // Badge checks (fire-and-forget — don't delay response)
   if (correct && !wasAlreadyCorrect) {
     checkSolveBadges(session.user.id).catch(() => {})
+
+    // 도박왕: "겜블러" 문제 정답
+    if (problem.title === '겜블러') {
+      awardBadge(session.user.id, 'hidden_gambler').catch(() => {})
+    }
+
+    // 병 GOD: 같은 문제 10번 이상 틀리고 정답
+    const sub = await prisma.problemSubmission.findUnique({
+      where: { problemId_userId: { problemId: params.id, userId: session.user.id } },
+      select: { wrongCount: true },
+    })
+    if ((sub?.wrongCount ?? 0) >= 10) {
+      awardBadge(session.user.id, 'hidden_persistent').catch(() => {})
+    }
   }
 
   return NextResponse.json({ correct, pointsAwarded, multiPart: subAnswerDefs.length > 0, isSelfSolve })
