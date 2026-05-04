@@ -163,7 +163,7 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
         ...solvedChallenger.map(s => s.problemId),
         ...solvedChallenged.map(s => s.problemId),
       ])
-      excludedProblemIds.push(...solvedSet)
+      excludedProblemIds.push(...Array.from(solvedSet))
     }
 
     const eligible = await prisma.problem.findMany({
