@@ -37,6 +37,15 @@ async function seed() {
         console.log('ℹ️ Owner already exists:', email)
       }
     }
+
+    // 히든 뱃지 upsert
+    const badges = [
+      { key: 'hidden_linear_algebra', name: '선형대수학자', description: 'Linear algebra 문제집의 모든 문제를 해결했습니다.', title: '선형대수학자', isHidden: true, isActive: true, sortOrder: 99 },
+    ]
+    for (const badge of badges) {
+      await prisma.badge.upsert({ where: { key: badge.key }, create: badge, update: {} })
+      console.log('✅ Badge upserted:', badge.key)
+    }
   } catch (error) {
     console.error('❌ Seeding error:', error)
     process.exit(1)
