@@ -85,34 +85,33 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
     },
   })
 
-  // Notify author on status change (admin action)
-  if (isAdmin && status && status !== problem.status && problem.authorId !== session.user.id) {
+  // Status change (admin action)
+  if (isAdmin && status && status !== problem.status) {
     const effectivePts = approvedPts ?? problem.approvedPts ?? 0
-    const notifMsg = status === 'APPROVED'
-      ? `문제 "${problem.title}"이(가) 승인되었습니다.${effectivePts ? ` (상점 포인트 +${effectivePts}pt)` : ''}`
-      : `문제 "${problem.title}"이(가) 반려되었습니다.`
+    const isApproved = status === 'APPROVED'
 
-    const notifCreate = prisma.notification.create({
-      data: {
-        userId: problem.authorId,
-        type: 'PROBLEM_APPROVED',
-        title: status === 'APPROVED' ? '문제 승인됨' : '문제 반려됨',
-        content: notifMsg,
-        link: `/problems/${problem.id}`,
-      },
-    })
+    // 상점 포인트: 문제 승인 시 출제자에게 지급 (소유자 포함 모두. 단 이미 승인→재승인 방지)
+    if (isApproved && effectivePts > 0) {
+      await prisma.user.update({
+        where: { id: problem.authorId },
+        data: { shopPoints: { increment: effectivePts } },
+      })
+    }
 
-    if (status === 'APPROVED' && effectivePts > 0) {
-      // Award shop points to author on approval
-      await prisma.$transaction([
-        notifCreate,
-        prisma.user.update({
-          where: { id: problem.authorId },
-          data: { shopPoints: { increment: effectivePts } },
-        }),
-      ])
-    } else {
-      await notifCreate
+    // 알림: 관리자가 본인 문제를 처리한 경우엔 자기 자신에게 알림 불필요
+    if (problem.authorId !== session.user.id) {
+      const notifMsg = isApproved
+        ? `문제 "${problem.title}"이(가) 승인되었습니다.${effectivePts ? ` (+${effectivePts} 상점 포인트)` : ''}`
+        : `문제 "${problem.title}"이(가) 반려되었습니다.`
+      await prisma.notification.create({
+        data: {
+          userId: problem.authorId,
+          type: 'PROBLEM_APPROVED',
+          title: isApproved ? '문제 승인됨' : '문제 반려됨',
+          content: notifMsg,
+          link: `/problems/${problem.id}`,
+        },
+      })
     }
   }
 
