@@ -71,10 +71,23 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
     update: { answer: storedAnswer, correct, ...((!correct && !wasAlreadyCorrect) ? { wrongCount: { increment: 1 } } : {}) },
   })
 
-  // Award points only on first correct submission (authors cannot earn from their own problems)
+  // Award points only on first correct submission
+  // 출제자 본인 + 대회 출처가 있으면 해당 대회의 총괄·기여자 전원 제외
   let pointsAwarded = 0
   const isSelfSolve = problem.authorId === session.user.id
-  if (correct && !wasAlreadyCorrect && problem.approvedPts && problem.approvedPts > 0 && !isSelfSolve) {
+  let isContestMember = false
+  if (!isSelfSolve && problem.contestId) {
+    const sourceContest = await prisma.contest.findUnique({
+      where: { id: problem.contestId },
+      select: { organizerId: true, contributors: { select: { userId: true } } },
+    })
+    if (sourceContest) {
+      isContestMember =
+        sourceContest.organizerId === session.user.id ||
+        sourceContest.contributors.some((ct) => ct.userId === session.user.id)
+    }
+  }
+  if (correct && !wasAlreadyCorrect && problem.approvedPts && problem.approvedPts > 0 && !isSelfSolve && !isContestMember) {
     await prisma.$transaction([
       prisma.user.update({
         where: { id: session.user.id },
@@ -131,5 +144,5 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
     }
   }
 
-  return NextResponse.json({ correct, pointsAwarded, multiPart: subAnswerDefs.length > 0, isSelfSolve })
+  return NextResponse.json({ correct, pointsAwarded, multiPart: subAnswerDefs.length > 0, isSelfSolve: isSelfSolve || isContestMember })
 }
