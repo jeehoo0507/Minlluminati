@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/db'
 import { getAuth } from '@/lib/auth'
+import bcrypt from 'bcryptjs'
 export const dynamic = 'force-dynamic'
 
 // GET: all banner items + shield price config
@@ -51,14 +52,14 @@ export async function POST(req: NextRequest) {
   }
 
   // Create banner item
-  const { name, description, imageUrl, price } = body as {
-    name: string; description?: string; imageUrl: string; price: number
+  const { name, description, imageUrl, price, size } = body as {
+    name: string; description?: string; imageUrl: string; price: number; size?: string
   }
   if (!name || !imageUrl || !price) {
     return NextResponse.json({ error: '이름, 이미지, 가격은 필수입니다' }, { status: 400 })
   }
   const banner = await prisma.bannerItem.create({
-    data: { name, description: description ?? '', imageUrl, price },
+    data: { name, description: description ?? '', imageUrl, price, size: size ?? 'md' },
   })
   return NextResponse.json(banner)
 }
@@ -69,7 +70,7 @@ export async function PATCH(req: NextRequest) {
   if (!session?.user || session.user.role !== 'ADMIN') {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
   }
-  const { id, name, description, imageUrl, price, isActive } = await req.json()
+  const { id, name, description, imageUrl, price, isActive, size } = await req.json()
   if (!id) return NextResponse.json({ error: 'id required' }, { status: 400 })
   const banner = await prisma.bannerItem.update({
     where: { id },
@@ -79,18 +80,24 @@ export async function PATCH(req: NextRequest) {
       ...(imageUrl !== undefined && { imageUrl }),
       ...(price !== undefined && { price }),
       ...(isActive !== undefined && { isActive }),
+      ...(size !== undefined && { size }),
     },
   })
   return NextResponse.json(banner)
 }
 
-// DELETE: delete banner item
+// DELETE: delete banner item (requires admin password)
 export async function DELETE(req: NextRequest) {
   const session = await getAuth()
   if (!session?.user || session.user.role !== 'ADMIN') {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
   }
-  const { id } = await req.json() as { id: string }
+  const { id, adminPassword } = await req.json() as { id: string; adminPassword?: string }
+  if (!adminPassword) return NextResponse.json({ error: '비밀번호를 입력해주세요' }, { status: 400 })
+  const admin = await prisma.user.findUnique({ where: { id: session.user.id }, select: { password: true } })
+  if (!admin?.password || !(await bcrypt.compare(adminPassword, admin.password))) {
+    return NextResponse.json({ error: '비밀번호가 올바르지 않습니다' }, { status: 403 })
+  }
   await prisma.bannerItem.delete({ where: { id } })
   return NextResponse.json({ ok: true })
 }

@@ -14,7 +14,7 @@ import { UserPlus, UserMinus, FileText, MessageSquare, Trophy, Bookmark } from '
 import { getTier } from '@/lib/scoring'
 import toast from 'react-hot-toast'
 
-interface BannerItem { id: string; name: string; imageUrl: string }
+interface BannerItem { id: string; name: string; imageUrl: string; size: string }
 interface UserProfile {
   id: string; name?: string | null; image?: string | null
   points: number; role: string; createdAt: string
@@ -100,7 +100,7 @@ export default function PublicProfilePage() {
         {profile.equippedBanner && (
           // eslint-disable-next-line @next/next/no-img-element
           <img src={profile.equippedBanner.imageUrl} alt={profile.equippedBanner.name}
-            className="w-full h-28 object-cover" />
+            className={`w-full object-cover ${profile.equippedBanner.size === 'sm' ? 'h-24' : profile.equippedBanner.size === 'lg' ? 'h-56' : 'h-40'}`} />
         )}
         <div className="p-6">
         <div className="flex items-start gap-4">

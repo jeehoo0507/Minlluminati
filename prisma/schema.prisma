@@ -699,6 +699,7 @@ model BannerItem {
   description String       @default("")
   imageUrl    String
   price       Int
+  size        String       @default("md") // "sm" | "md" | "lg"
   isActive    Boolean      @default(true)
   createdAt   DateTime     @default(now())
   updatedAt   DateTime     @updatedAt

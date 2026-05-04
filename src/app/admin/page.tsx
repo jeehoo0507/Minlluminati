@@ -36,6 +36,119 @@ interface PermReq {
 
 type ConfirmAction = { title: string; description?: string; onConfirm: (pw: string) => Promise<void> } | null
 
+// ─── Banner size definitions ───────────────────────────────────────────────
+const BANNER_SIZES = {
+  sm: { label: '작게 (96px)', cls: 'h-24', previewCls: 'h-16' },
+  md: { label: '기본 (160px)', cls: 'h-40', previewCls: 'h-24' },
+  lg: { label: '크게 (224px)', cls: 'h-56', previewCls: 'h-32' },
+} as const
+type BannerSizeKey = keyof typeof BANNER_SIZES
+const BANNER_ASPECT: Record<BannerSizeKey, number> = { sm: 8, md: 4.8, lg: 3.43 }
+
+function dataURLtoFile(dataUrl: string, filename: string): File {
+  const arr = dataUrl.split(',')
+  const mime = arr[0].match(/:(.*?);/)![1]
+  const bstr = atob(arr[1])
+  let n = bstr.length; const u8arr = new Uint8Array(n)
+  while (n--) u8arr[n] = bstr.charCodeAt(n)
+  return new File([u8arr], filename, { type: mime })
+}
+
+// ─── Image Cropper Modal ───────────────────────────────────────────────────
+function ImageCropper({ imageSrc, aspectRatio, onCrop, onCancel }: {
+  imageSrc: string; aspectRatio: number
+  onCrop: (dataUrl: string) => void; onCancel: () => void
+}) {
+  const containerRef = useRef<HTMLDivElement>(null)
+  const imgRef = useRef<HTMLImageElement>(null)
+  const [imgLoaded, setImgLoaded] = useState(false)
+  const [imgDisp, setImgDisp] = useState({ w: 0, h: 0 })
+  const [crop, setCrop] = useState({ x: 0, y: 0, w: 0, h: 0 })
+  const isDragging = useRef(false)
+  const dragOffset = useRef({ x: 0, y: 0 })
+
+  function onImgLoad() {
+    const img = imgRef.current!
+    const rect = img.getBoundingClientRect()
+    const dw = rect.width, dh = rect.height
+    setImgDisp({ w: dw, h: dh })
+    let cw = dw, ch = cw / aspectRatio
+    if (ch > dh) { ch = dh; cw = ch * aspectRatio }
+    setCrop({ x: (dw - cw) / 2, y: (dh - ch) / 2, w: cw, h: ch })
+    setImgLoaded(true)
+  }
+
+  function onMouseDown(e: React.MouseEvent) {
+    e.preventDefault()
+    isDragging.current = true
+    const rect = containerRef.current!.getBoundingClientRect()
+    dragOffset.current = { x: e.clientX - rect.left - crop.x, y: e.clientY - rect.top - crop.y }
+  }
+
+  function onMouseMove(e: React.MouseEvent) {
+    if (!isDragging.current) return
+    const rect = containerRef.current!.getBoundingClientRect()
+    const rx = e.clientX - rect.left, ry = e.clientY - rect.top
+    setCrop((p) => ({
+      ...p,
+      x: Math.max(0, Math.min(imgDisp.w - p.w, rx - dragOffset.current.x)),
+      y: Math.max(0, Math.min(imgDisp.h - p.h, ry - dragOffset.current.y)),
+    }))
+  }
+
+  function onMouseUp() { isDragging.current = false }
+
+  function handleConfirm() {
+    const img = imgRef.current!
+    const sx = img.naturalWidth / imgDisp.w, sy = img.naturalHeight / imgDisp.h
+    const canvas = document.createElement('canvas')
+    const outW = 1200, outH = Math.round(outW / aspectRatio)
+    canvas.width = outW; canvas.height = outH
+    canvas.getContext('2d')!.drawImage(img, crop.x * sx, crop.y * sy, crop.w * sx, crop.h * sy, 0, 0, outW, outH)
+    onCrop(canvas.toDataURL('image/jpeg', 0.92))
+  }
+
+  return (
+    <div className="fixed inset-0 bg-black/80 z-50 flex items-center justify-center p-4">
+      <div className="bg-surface rounded-2xl p-4 w-full max-w-2xl space-y-3">
+        <div className="flex items-center justify-between">
+          <p className="text-sm font-semibold text-text-primary">배너 영역 선택</p>
+          <p className="text-xs text-muted">흰 박스를 드래그해서 위치 조정</p>
+        </div>
+        <div ref={containerRef} className="relative select-none overflow-hidden rounded-lg"
+          onMouseMove={onMouseMove} onMouseUp={onMouseUp} onMouseLeave={onMouseUp}>
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img ref={imgRef} src={imageSrc} alt="" className="w-full block" onLoad={onImgLoad} draggable={false} />
+          {imgLoaded && (
+            <>
+              {/* Darken outside crop */}
+              <div className="absolute inset-0 pointer-events-none">
+                <div className="absolute bg-black/60" style={{ top: 0, left: 0, right: 0, height: crop.y }} />
+                <div className="absolute bg-black/60" style={{ top: crop.y + crop.h, left: 0, right: 0, bottom: 0 }} />
+                <div className="absolute bg-black/60" style={{ top: crop.y, left: 0, width: crop.x, height: crop.h }} />
+                <div className="absolute bg-black/60" style={{ top: crop.y, left: crop.x + crop.w, right: 0, height: crop.h }} />
+              </div>
+              {/* Crop box */}
+              <div className="absolute border-2 border-white cursor-move"
+                style={{ left: crop.x, top: crop.y, width: crop.w, height: crop.h }}
+                onMouseDown={onMouseDown}>
+                <div className="absolute top-0 left-0 w-3 h-3 border-t-2 border-l-2 border-white" />
+                <div className="absolute top-0 right-0 w-3 h-3 border-t-2 border-r-2 border-white" />
+                <div className="absolute bottom-0 left-0 w-3 h-3 border-b-2 border-l-2 border-white" />
+                <div className="absolute bottom-0 right-0 w-3 h-3 border-b-2 border-r-2 border-white" />
+              </div>
+            </>
+          )}
+        </div>
+        <div className="flex gap-2 justify-end">
+          <button onClick={onCancel} className="px-4 py-1.5 text-sm border border-border rounded-lg text-text-secondary hover:text-text-primary transition-colors">취소</button>
+          <button onClick={handleConfirm} disabled={!imgLoaded} className="px-4 py-1.5 text-sm bg-accent text-white rounded-lg hover:bg-accent-dim transition-colors disabled:opacity-50">적용</button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 export default function AdminPage() {
   const { data: session, status } = useSession()
   const router = useRouter()
@@ -75,15 +188,21 @@ export default function AdminPage() {
   const [allGroups, setAllGroups] = useState<{ id: string; name: string; isPublic: boolean; createdAt: string; owner: { id: string; name?: string | null; email: string }; _count: { members: number; posts: number } }[]>([])
 
   // Shop state
-  const [shopBanners, setShopBanners] = useState<{ id: string; name: string; description: string; imageUrl: string; price: number; isActive: boolean }[]>([])
+  const [shopBanners, setShopBanners] = useState<{ id: string; name: string; description: string; imageUrl: string; price: number; size: string; isActive: boolean }[]>([])
   const [shieldPrice, setShieldPrice] = useState(30)
-  const [newBanner, setNewBanner] = useState({ name: '', description: '', imageUrl: '', price: 0 })
+  const [newBanner, setNewBanner] = useState({ name: '', description: '', imageUrl: '', price: 0, size: 'md' as BannerSizeKey })
   const [bannerSaving, setBannerSaving] = useState(false)
   const [shopAdjUser, setShopAdjUser] = useState('')
   const [shopAdjDelta, setShopAdjDelta] = useState('')
   const [shopAdjLoading, setShopAdjLoading] = useState(false)
   const [bannerUploading, setBannerUploading] = useState(false)
   const bannerFileRef = useRef<HTMLInputElement>(null)
+  const editBannerFileRef = useRef<HTMLInputElement>(null)
+  type BannerEditState = { id: string; name: string; description: string; imageUrl: string; price: number; size: string }
+  const [editingBanner, setEditingBanner] = useState<BannerEditState | null>(null)
+  const [editBannerSaving, setEditBannerSaving] = useState(false)
+  const [editBannerUploading, setEditBannerUploading] = useState(false)
+  const [cropperData, setCropperData] = useState<{ imageSrc: string; forEdit: boolean } | null>(null)
 
   useEffect(() => {
     if (status === 'loading') return
@@ -142,20 +261,36 @@ export default function AdminPage() {
     else toast.error('저장 실패')
   }
 
-  async function handleBannerImageUpload(e: React.ChangeEvent<HTMLInputElement>) {
-    const file = e.target.files?.[0]; if (!file) return
-    setBannerUploading(true)
+  async function uploadBannerFile(file: File, forEdit: boolean) {
+    if (forEdit) setEditBannerUploading(true); else setBannerUploading(true)
     try {
       const fd = new FormData(); fd.append('file', file)
       const res = await fetch('/api/upload', { method: 'POST', body: fd })
       if (!res.ok) { toast.error('업로드 실패'); return }
       const data = await res.json()
-      setNewBanner((p) => ({ ...p, imageUrl: data.url }))
+      if (forEdit) setEditingBanner((p) => p ? { ...p, imageUrl: data.url } : p)
+      else setNewBanner((p) => ({ ...p, imageUrl: data.url }))
       toast.success('이미지 업로드 완료')
     } finally {
-      setBannerUploading(false)
-      if (bannerFileRef.current) bannerFileRef.current.value = ''
+      if (forEdit) setEditBannerUploading(false); else setBannerUploading(false)
     }
+  }
+
+  async function handleBannerImageUpload(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0]; if (!file) return
+    if (bannerFileRef.current) bannerFileRef.current.value = ''
+    // GIF: skip cropper, upload directly to preserve animation
+    if (file.type === 'image/gif') { await uploadBannerFile(file, false); return }
+    const reader = new FileReader()
+    reader.onload = (ev) => setCropperData({ imageSrc: ev.target!.result as string, forEdit: false })
+    reader.readAsDataURL(file)
+  }
+
+  async function handleCropConfirm(dataUrl: string) {
+    const forEdit = cropperData!.forEdit
+    setCropperData(null)
+    const file = dataURLtoFile(dataUrl, 'banner.jpg')
+    await uploadBannerFile(file, forEdit)
   }
 
   async function createBanner() {
@@ -166,18 +301,50 @@ export default function AdminPage() {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(newBanner),
       })
-      if (res.ok) { toast.success('배너 생성 완료'); setNewBanner({ name: '', description: '', imageUrl: '', price: 0 }); loadShopAdmin() }
+      if (res.ok) { toast.success('배너 생성 완료'); setNewBanner({ name: '', description: '', imageUrl: '', price: 0, size: 'md' }); loadShopAdmin() }
       else toast.error('생성 실패')
     } finally { setBannerSaving(false) }
   }
 
-  async function deleteBanner(id: string) {
-    const res = await fetch('/api/admin/shop', {
-      method: 'DELETE', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ id }),
+  async function handleEditBannerImageUpload(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0]; if (!file) return
+    if (editBannerFileRef.current) editBannerFileRef.current.value = ''
+    // GIF: skip cropper
+    if (file.type === 'image/gif') { await uploadBannerFile(file, true); return }
+    const reader = new FileReader()
+    reader.onload = (ev) => setCropperData({ imageSrc: ev.target!.result as string, forEdit: true })
+    reader.readAsDataURL(file)
+  }
+
+  async function saveEditBanner() {
+    if (!editingBanner) return
+    setEditBannerSaving(true)
+    try {
+      const res = await fetch('/api/admin/shop', {
+        method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(editingBanner),
+      })
+      if (res.ok) { toast.success('배너 수정 완료'); setEditingBanner(null); loadShopAdmin() }
+      else toast.error('수정 실패')
+    } finally { setEditBannerSaving(false) }
+  }
+
+  function confirmDeleteBanner(banner: { id: string; name: string }) {
+    setConfirmAction({
+      title: `배너 삭제: "${banner.name}"`,
+      description: '이 배너를 보유하거나 장착한 모든 유저의 배너 데이터도 함께 삭제됩니다.',
+      onConfirm: async (pw) => {
+        const res = await fetch('/api/admin/shop', {
+          method: 'DELETE', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ id: banner.id, adminPassword: pw }),
+        })
+        const data = await res.json()
+        if (!res.ok) throw new Error(data.error ?? '삭제 실패')
+        toast.success('배너 삭제 완료')
+        setConfirmAction(null)
+        loadShopAdmin()
+      },
     })
-    if (res.ok) { toast.success('삭제 완료'); loadShopAdmin() }
-    else toast.error('삭제 실패')
   }
 
   async function toggleBannerActive(id: string, isActive: boolean) {
@@ -510,8 +677,21 @@ export default function AdminPage() {
     ...(isOwner ? [{ key: 'reset', label: '⚠️ 초기화' }] : []),
   ]
 
+  // Determine aspect ratio for cropper based on current size selection
+  const cropAspect = cropperData
+    ? BANNER_ASPECT[(cropperData.forEdit ? (editingBanner?.size ?? 'md') : newBanner.size) as BannerSizeKey] ?? 4.8
+    : 4.8
+
   return (
     <div className="max-w-5xl mx-auto px-4 py-8 space-y-6">
+      {cropperData && (
+        <ImageCropper
+          imageSrc={cropperData.imageSrc}
+          aspectRatio={cropAspect}
+          onCrop={handleCropConfirm}
+          onCancel={() => setCropperData(null)}
+        />
+      )}
       {confirmAction && (
         <AdminConfirmModal
           title={confirmAction.title}
@@ -542,7 +722,7 @@ export default function AdminPage() {
               if (key === 'tiers') loadTierConfig()
               if (key === 'daily') loadDailyStatus()
               if (key === 'emaillist') loadAllowedEmails()
-              if (key === 'shop') loadShopAdmin()
+              if (key === 'shop') { loadShopAdmin(); if (users.length === 0) loadUsers() }
             }}
             className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${tab === key ? 'bg-accent text-background' : 'text-text-secondary hover:text-text-primary'}`}
           >
@@ -1101,18 +1281,21 @@ export default function AdminPage() {
           <div className="bg-surface border border-border rounded-2xl p-6 space-y-4">
             <h2 className="text-sm font-semibold text-text-primary">상점 포인트 조정</h2>
             <div className="flex flex-wrap gap-2">
-              <input value={shopAdjUser} onChange={(e) => setShopAdjUser(e.target.value)}
-                placeholder="유저 ID"
-                className="flex-1 min-w-40 bg-background border border-border rounded-lg px-3 py-2 text-sm text-text-primary focus:outline-none focus:border-accent" />
+              <select value={shopAdjUser} onChange={(e) => setShopAdjUser(e.target.value)}
+                className="flex-1 min-w-40 bg-background border border-border rounded-lg px-3 py-2 text-sm text-text-primary focus:outline-none focus:border-accent">
+                <option value="">유저 선택</option>
+                {users.map((u) => (
+                  <option key={u.id} value={u.id}>{u.name ?? u.email} ({u.email})</option>
+                ))}
+              </select>
               <input type="number" value={shopAdjDelta} onChange={(e) => setShopAdjDelta(e.target.value)}
                 placeholder="±포인트 (예: 50 또는 -20)"
-                className="w-40 bg-background border border-border rounded-lg px-3 py-2 text-sm text-text-primary focus:outline-none focus:border-accent" />
-              <button onClick={adjustShopPoints} disabled={shopAdjLoading}
+                className="w-44 bg-background border border-border rounded-lg px-3 py-2 text-sm text-text-primary focus:outline-none focus:border-accent" />
+              <button onClick={adjustShopPoints} disabled={shopAdjLoading || !shopAdjUser}
                 className="px-4 py-2 rounded-lg bg-accent text-background text-sm font-semibold hover:bg-accent-dim transition-colors disabled:opacity-50">
                 {shopAdjLoading ? '...' : '조정'}
               </button>
             </div>
-            <p className="text-xs text-muted">유저 ID는 유저 목록에서 확인하거나 프로필 URL에서 복사하세요.</p>
           </div>
 
           {/* Banner CRUD */}
@@ -1125,6 +1308,15 @@ export default function AdminPage() {
               <input type="number" min={1} value={newBanner.price || ''} onChange={(e) => setNewBanner((p) => ({ ...p, price: Number(e.target.value) }))}
                 placeholder="가격 (상점 포인트)"
                 className="bg-background border border-border rounded-lg px-3 py-2 text-sm text-text-primary focus:outline-none focus:border-accent" />
+              {/* Size selector */}
+              <div className="col-span-full flex gap-2">
+                {(Object.keys(BANNER_SIZES) as BannerSizeKey[]).map((s) => (
+                  <button key={s} type="button" onClick={() => setNewBanner((p) => ({ ...p, size: s }))}
+                    className={`flex-1 py-1.5 rounded-lg border text-xs font-medium transition-colors ${newBanner.size === s ? 'border-accent bg-accent/10 text-accent' : 'border-border text-muted hover:text-text-primary'}`}>
+                    {BANNER_SIZES[s].label}
+                  </button>
+                ))}
+              </div>
               <div className="col-span-full">
                 <input ref={bannerFileRef} type="file" accept="image/*" className="hidden" onChange={handleBannerImageUpload} />
                 <button type="button" onClick={() => bannerFileRef.current?.click()} disabled={bannerUploading}
@@ -1139,7 +1331,7 @@ export default function AdminPage() {
             </div>
             {newBanner.imageUrl && (
               // eslint-disable-next-line @next/next/no-img-element
-              <img src={newBanner.imageUrl} alt="preview" className="w-full h-20 object-cover rounded-lg border border-border" />
+              <img src={newBanner.imageUrl} alt="preview" className={`w-full object-cover rounded-lg border border-border ${BANNER_SIZES[newBanner.size as BannerSizeKey]?.previewCls ?? 'h-24'}`} />
             )}
             <button onClick={createBanner} disabled={bannerSaving}
               className="px-4 py-2 rounded-lg bg-accent text-background text-sm font-semibold hover:bg-accent-dim transition-colors disabled:opacity-50">
@@ -1153,25 +1345,73 @@ export default function AdminPage() {
               <div className="px-4 py-3 border-b border-border bg-surface-2">
                 <h3 className="text-sm font-semibold text-text-secondary">배너 목록 ({shopBanners.length})</h3>
               </div>
+              <input ref={editBannerFileRef} type="file" accept="image/*" className="hidden" onChange={handleEditBannerImageUpload} />
               <div className="divide-y divide-border">
                 {shopBanners.map((b) => (
-                  <div key={b.id} className="p-4 flex items-center gap-3">
-                    {/* eslint-disable-next-line @next/next/no-img-element */}
-                    <img src={b.imageUrl} alt={b.name} className="w-24 h-14 object-cover rounded-lg border border-border shrink-0" />
-                    <div className="flex-1 min-w-0">
-                      <p className="font-medium text-text-primary">{b.name}</p>
-                      <p className="text-xs text-muted">{b.price}p{b.description ? ` · ${b.description}` : ''}</p>
-                    </div>
-                    <div className="flex items-center gap-2 shrink-0">
-                      <button onClick={() => toggleBannerActive(b.id, !b.isActive)}
-                        className={`text-xs px-2 py-1 rounded-lg border transition-colors ${b.isActive ? 'border-emerald-500/30 text-emerald-500 bg-emerald-500/5' : 'border-border text-muted'}`}>
-                        {b.isActive ? '활성' : '비활성'}
-                      </button>
-                      <button onClick={() => deleteBanner(b.id)}
-                        className="p-1.5 rounded-lg text-muted hover:text-red-400 hover:bg-red-400/10 transition-colors">
-                        <X size={14} />
-                      </button>
-                    </div>
+                  <div key={b.id} className="p-4 space-y-3">
+                    {editingBanner?.id === b.id ? (
+                      <div className="space-y-2">
+                        {/* eslint-disable-next-line @next/next/no-img-element */}
+                        <img src={editingBanner.imageUrl} alt="preview" className={`w-full object-cover rounded-lg border border-border ${BANNER_SIZES[editingBanner.size as BannerSizeKey]?.previewCls ?? 'h-24'}`} />
+                        <button type="button" onClick={() => editBannerFileRef.current?.click()} disabled={editBannerUploading}
+                          className="w-full text-xs py-1.5 rounded-lg border border-dashed border-border text-text-secondary hover:border-accent hover:text-text-primary transition-colors disabled:opacity-50">
+                          {editBannerUploading ? '업로드 중...' : '이미지 변경'}
+                        </button>
+                        {/* Size selector */}
+                        <div className="flex gap-2">
+                          {(Object.keys(BANNER_SIZES) as BannerSizeKey[]).map((s) => (
+                            <button key={s} type="button" onClick={() => setEditingBanner((p) => p ? { ...p, size: s } : p)}
+                              className={`flex-1 py-1 rounded-lg border text-xs font-medium transition-colors ${editingBanner.size === s ? 'border-accent bg-accent/10 text-accent' : 'border-border text-muted hover:text-text-primary'}`}>
+                              {BANNER_SIZES[s].label}
+                            </button>
+                          ))}
+                        </div>
+                        <div className="grid grid-cols-2 gap-2">
+                          <input value={editingBanner.name} onChange={(e) => setEditingBanner((p) => p ? { ...p, name: e.target.value } : p)}
+                            placeholder="배너 이름"
+                            className="bg-background border border-border rounded-lg px-2 py-1.5 text-sm text-text-primary focus:outline-none focus:border-accent" />
+                          <input type="number" value={editingBanner.price} onChange={(e) => setEditingBanner((p) => p ? { ...p, price: Number(e.target.value) } : p)}
+                            placeholder="가격"
+                            className="bg-background border border-border rounded-lg px-2 py-1.5 text-sm text-text-primary focus:outline-none focus:border-accent" />
+                          <input value={editingBanner.description} onChange={(e) => setEditingBanner((p) => p ? { ...p, description: e.target.value } : p)}
+                            placeholder="설명 (선택)"
+                            className="col-span-full bg-background border border-border rounded-lg px-2 py-1.5 text-sm text-text-primary focus:outline-none focus:border-accent" />
+                        </div>
+                        <div className="flex gap-2">
+                          <button onClick={saveEditBanner} disabled={editBannerSaving}
+                            className="flex-1 py-1.5 rounded-lg bg-accent text-background text-xs font-semibold hover:bg-accent-dim transition-colors disabled:opacity-50">
+                            {editBannerSaving ? '저장 중...' : '저장'}
+                          </button>
+                          <button onClick={() => setEditingBanner(null)}
+                            className="px-3 py-1.5 rounded-lg border border-border text-xs text-text-secondary hover:text-text-primary transition-colors">
+                            취소
+                          </button>
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="flex items-center gap-3">
+                        {/* eslint-disable-next-line @next/next/no-img-element */}
+                        <img src={b.imageUrl} alt={b.name} className="w-24 h-14 object-cover rounded-lg border border-border shrink-0" />
+                        <div className="flex-1 min-w-0">
+                          <p className="font-medium text-text-primary">{b.name}</p>
+                          <p className="text-xs text-muted">{b.price}p · {b.size ?? 'md'}{b.description ? ` · ${b.description}` : ''}</p>
+                        </div>
+                        <div className="flex items-center gap-2 shrink-0">
+                          <button onClick={() => setEditingBanner({ id: b.id, name: b.name, description: b.description, imageUrl: b.imageUrl, price: b.price, size: b.size ?? 'md' })}
+                            className="p-1.5 rounded-lg text-muted hover:text-accent hover:bg-accent/10 transition-colors">
+                            <Pencil size={13} />
+                          </button>
+                          <button onClick={() => toggleBannerActive(b.id, !b.isActive)}
+                            className={`text-xs px-2 py-1 rounded-lg border transition-colors ${b.isActive ? 'border-emerald-500/30 text-emerald-500 bg-emerald-500/5' : 'border-border text-muted'}`}>
+                            {b.isActive ? '활성' : '비활성'}
+                          </button>
+                          <button onClick={() => confirmDeleteBanner(b)}
+                            className="p-1.5 rounded-lg text-muted hover:text-red-400 hover:bg-red-400/10 transition-colors">
+                            <X size={14} />
+                          </button>
+                        </div>
+                      </div>
+                    )}
                   </div>
                 ))}
               </div>

@@ -80,38 +80,50 @@ export async function GET(req: NextRequest, { params }: { params: { id: string }
     return allDays.has(date) || allShieldSet.has(date) || HOLIDAYS.has(date)
   }
 
-  // Auto-consume shield: if it's own profile and streaks would break but user has shields
+  // Auto-consume shields: fill ALL consecutive gap days going back from yesterday
   if (isSelf) {
     const user = await prisma.user.findUnique({ where: { id: userId }, select: { streakShieldsOwned: true } })
     let availableShields = user?.streakShieldsOwned ?? 0
 
-    // Check yesterday — if yesterday had no activity and no shield yet, auto-apply
-    const yesterday = new Date(todayKST + 'T00:00:00')
-    yesterday.setDate(yesterday.getDate() - 1)
-    const yesterdayStr = yesterday.toLocaleDateString('sv-SE', { timeZone: 'Asia/Seoul' })
+    if (availableShields > 0) {
+      // Walk backwards from yesterday to find the continuous gap
+      const walkDate = new Date(todayKST + 'T00:00:00')
+      walkDate.setDate(walkDate.getDate() - 1)
 
-    // Only auto-apply if: yesterday has no activity, no shield used, not holiday, user has shields
-    // AND today has activity (meaning we're still going), or today has activity
-    if (
-      availableShields > 0
-      && !allDays.has(yesterdayStr)
-      && !allShieldSet.has(yesterdayStr)
-      && !HOLIDAYS.has(yesterdayStr)
-    ) {
-      // Check that some day before yesterday was active (otherwise nothing to protect)
-      const dayBeforeYesterday = new Date(yesterday)
-      dayBeforeYesterday.setDate(dayBeforeYesterday.getDate() - 1)
-      const dbyStr = dayBeforeYesterday.toLocaleDateString('sv-SE', { timeZone: 'Asia/Seoul' })
-      const hadStreakBefore = isActive(dbyStr)
+      const gapDays: string[] = []
+      let foundPriorActive = false
 
-      if (hadStreakBefore) {
+      for (let i = 0; i < 365; i++) {
+        const dateStr = walkDate.toLocaleDateString('sv-SE', { timeZone: 'Asia/Seoul' })
+        if (isActive(dateStr)) {
+          // Hit an active day — there's a streak to protect
+          foundPriorActive = true
+          break
+        }
+        // This day is a gap (no activity, no shield, not holiday)
+        if (!allShieldSet.has(dateStr) && !HOLIDAYS.has(dateStr)) {
+          gapDays.push(dateStr)
+        }
+        walkDate.setDate(walkDate.getDate() - 1)
+      }
+
+      // Apply shields to gap days (most recent first) up to available count
+      if (foundPriorActive && gapDays.length > 0) {
+        const daysToShield = gapDays.slice(0, availableShields)
         await prisma.$transaction([
-          prisma.streakShieldUsage.create({ data: { userId, date: yesterdayStr } }),
-          prisma.user.update({ where: { id: userId }, data: { streakShieldsOwned: { decrement: 1 } } }),
+          prisma.streakShieldUsage.createMany({
+            data: daysToShield.map((date) => ({ userId, date })),
+            skipDuplicates: true,
+          }),
+          prisma.user.update({
+            where: { id: userId },
+            data: { streakShieldsOwned: { decrement: daysToShield.length } },
+          }),
         ])
-        allShieldSet.add(yesterdayStr)
-        shieldMap[yesterdayStr] = true
-        availableShields--
+        for (const date of daysToShield) {
+          allShieldSet.add(date)
+          if (date.startsWith(`${year}-`)) shieldMap[date] = true
+        }
       }
     }
   }

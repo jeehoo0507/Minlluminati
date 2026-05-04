@@ -13,7 +13,7 @@ import { getTier } from '@/lib/scoring'
 import toast from 'react-hot-toast'
 
 interface RivalUser { id: string; name?: string | null; image?: string | null; points: number }
-interface BannerItem { id: string; name: string; description: string; imageUrl: string; price: number; isActive: boolean }
+interface BannerItem { id: string; name: string; description: string; imageUrl: string; price: number; size: string; isActive: boolean }
 interface OwnedBanner { id: string; bannerItemId: string; isEquipped: boolean; bannerItem: BannerItem }
 interface ShopData {
   shopPoints: number
@@ -195,7 +195,7 @@ export default function ProfilePage() {
         {equippedBanner && (
           // eslint-disable-next-line @next/next/no-img-element
           <img src={equippedBanner.bannerItem.imageUrl} alt={equippedBanner.bannerItem.name}
-            className="w-full h-24 object-cover rounded-xl border border-border" />
+            className={`w-full object-cover rounded-xl border border-border ${equippedBanner.bannerItem.size === 'sm' ? 'h-24' : equippedBanner.bannerItem.size === 'lg' ? 'h-56' : 'h-40'}`} />
         )}
         <div className="flex items-center gap-4">
           <div className="relative shrink-0">
@@ -337,7 +337,7 @@ export default function ProfilePage() {
                       return (
                         <div key={banner.id} className="border border-border rounded-xl overflow-hidden">
                           {/* eslint-disable-next-line @next/next/no-img-element */}
-                          <img src={banner.imageUrl} alt={banner.name} className="w-full h-20 object-cover" />
+                          <img src={banner.imageUrl} alt={banner.name} className={`w-full object-cover ${banner.size === 'sm' ? 'h-20' : banner.size === 'lg' ? 'h-36' : 'h-28'}`} />
                           <div className="p-3 flex items-center gap-3">
                             <div className="flex-1 min-w-0">
                               <p className="text-sm font-semibold text-text-primary">{banner.name}</p>
