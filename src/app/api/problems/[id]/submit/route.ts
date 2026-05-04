@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/db'
 import { getAuth } from '@/lib/auth'
-import { checkSolveBadges, awardBadge } from '@/lib/awardBadge'
+import { checkSolveBadges, awardBadge, checkLinearAlgebraBadge } from '@/lib/awardBadge'
 import { checkRateLimit } from '@/lib/rateLimit'
 
 export const dynamic = 'force-dynamic'
@@ -158,6 +158,9 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
     if ((sub?.wrongCount ?? 0) >= 10) {
       awardBadge(session.user.id, 'hidden_persistent').catch(() => {})
     }
+
+    // Linear algebra 문제집 완주 히든 뱃지
+    checkLinearAlgebraBadge(session.user.id).catch(() => {})
   }
 
   return NextResponse.json({ correct, pointsAwarded, multiPart: subAnswerDefs.length > 0, isSelfSolve: isSelfSolve || isContestMember })

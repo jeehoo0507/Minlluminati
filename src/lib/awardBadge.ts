@@ -73,6 +73,38 @@ export async function checkContestWinBadges(userId: string) {
   // TODO: 대회 우승 기록 모델이 없으므로 추후 구현
 }
 
+// ── Linear algebra 문제집 완주 ────────────────────────────────────
+export async function checkLinearAlgebraBadge(userId: string) {
+  const problemSet = await prisma.problemSet.findFirst({
+    where: { title: { equals: 'Linear algebra', mode: 'insensitive' } },
+    include: { items: { select: { problemId: true } } },
+  })
+  if (!problemSet || problemSet.items.length === 0) return
+
+  const problemIds = problemSet.items.map((i) => i.problemId)
+  const solvedCount = await prisma.problemSubmission.count({
+    where: { userId, correct: true, problemId: { in: problemIds } },
+  })
+  if (solvedCount < problemIds.length) return
+
+  // 뱃지가 없으면 자동 생성 (히든)
+  await prisma.badge.upsert({
+    where: { key: 'hidden_linear_algebra' },
+    create: {
+      key: 'hidden_linear_algebra',
+      name: '선형대수학자',
+      description: 'Linear algebra 문제집의 모든 문제를 해결했습니다.',
+      title: '선형대수학자',
+      isHidden: true,
+      isActive: true,
+      sortOrder: 99,
+    },
+    update: {},
+  })
+
+  await awardBadge(userId, 'hidden_linear_algebra')
+}
+
 // ── 하트 10개 이상 (주딱) ─────────────────────────────────────────
 export async function checkPopularBadge(userId: string) {
   const posts = await prisma.post.findMany({
