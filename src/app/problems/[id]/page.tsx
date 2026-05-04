@@ -86,7 +86,8 @@ export default function ProblemDetailPage() {
   const [backLabel, setBackLabel] = useState('문제 목록')
   useEffect(() => {
     const from = new URLSearchParams(window.location.search).get('from')
-    if (from) { setBackHref(from); setBackLabel('문제집으로') }
+    if (from?.includes('/marathon')) { setBackHref('/problems/marathon'); setBackLabel('마라톤으로') }
+    else if (from) { setBackHref(from); setBackLabel('문제집으로') }
   }, [])
 
   const [problem, setProblem] = useState<Problem | null>(null)

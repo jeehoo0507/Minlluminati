@@ -39,12 +39,18 @@ const config: Config = {
           from: { opacity: '0' },
           to: { opacity: '1' },
         },
+        'marathon-pop': {
+          '0%':   { transform: 'scale(0)',    opacity: '0' },
+          '60%':  { transform: 'scale(1.18)', opacity: '1' },
+          '100%': { transform: 'scale(1)',    opacity: '1' },
+        },
       },
       animation: {
         'slide-in-right': 'slide-in-right 0.25s cubic-bezier(0.32,0.72,0,1)',
         'slide-in-left': 'slide-in-left 0.25s cubic-bezier(0.32,0.72,0,1)',
         'fade-in': 'fade-in 0.15s ease-out',
         'fade-in-backdrop': 'fade-in-backdrop 0.2s ease-out',
+        'marathon-pop': 'marathon-pop 0.45s cubic-bezier(0.34, 1.56, 0.64, 1)',
       },
     },
   },

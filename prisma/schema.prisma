@@ -66,6 +66,9 @@ model User {
   // Study sessions
   studySessions StudySession[]
 
+  // Marathon
+  marathonSessions MarathonSession[]
+
   // Team contests
   teamMemberships ContestTeamMember[]
   ledTeams        ContestTeam[]       @relation("TeamLeader")
@@ -371,6 +374,7 @@ model Problem {
   essaySubmissions ProblemEssaySubmission[]
   bookmarks        ProblemBookmark[]
   difficultyVotes  DifficultyVote[]
+  marathonItems    MarathonItem[]
 
   @@map("problems")
 }
@@ -771,4 +775,35 @@ model PointHistory {
   user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@map("point_history")
+}
+
+// ───────────────────────────── Marathon ─────────────────────────────
+
+model MarathonSession {
+  id                     String         @id @default(cuid())
+  userId                 String
+  weekStart              String         // YYYY-MM-DD (KST Monday)
+  completionBonusAwarded Boolean        @default(false)
+  user                   User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  items                  MarathonItem[]
+  createdAt              DateTime       @default(now())
+
+  @@unique([userId, weekStart])
+  @@map("marathon_sessions")
+}
+
+model MarathonItem {
+  id           String          @id @default(cuid())
+  sessionId    String
+  problemId    String
+  order        Int             // 1-7 (난이도 오름차순)
+  bonusPts     Int             @default(0)  // 클리어 시 지급 shopPoints
+  solved       Boolean         @default(false)
+  solvedAt     DateTime?
+  bonusAwarded Boolean         @default(false)
+  session      MarathonSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  problem      Problem         @relation(fields: [problemId], references: [id])
+
+  @@unique([sessionId, order])
+  @@map("marathon_items")
 }

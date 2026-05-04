@@ -19,7 +19,6 @@ const NAV_ITEMS = [
   { href: '/contests', label: '대회' },
   { href: '/groups', label: '그룹' },
   { href: '/boards', label: '보드' },
-  { href: '/timer', label: '타이머' },
 ]
 
 export function Header() {
