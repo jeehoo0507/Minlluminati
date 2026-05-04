@@ -44,6 +44,7 @@ async function finishContest(id: string) {
           isEssay: cp.isEssay,             // 서술형 여부 그대로 이전
           allowRetry: cp.allowRetry,       // 재시도 설정 그대로 이전
           status: 'APPROVED',              // 검토된 문제이므로 바로 승인
+          subject: 'CONTEST',              // 대회 출제 과목 자동 태그
           authorId: c.organizerId,
           contestId: id,                   // 출처 대회 연결
         },

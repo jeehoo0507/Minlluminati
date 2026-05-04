@@ -25,11 +25,12 @@ export const SUBJECTS = {
   BIOLOGY:   { label: '생명', short: '생명', category: 'science' },
   QUESTION:  { label: '질문', short: '질문', category: 'community' },
   BOARD:     { label: '자유게시판', short: '자유판', category: 'community' },
+  CONTEST:   { label: '대회 출제', short: '대회', category: 'contest' },
 } as const
 
 export type SubjectKey = keyof typeof SUBJECTS
 
-export const PROBLEM_SUBJECTS: SubjectKey[] = ['MATH1', 'MATH2', 'MATH', 'PHYSICS', 'CHEMISTRY', 'CS', 'EARTH', 'BIOLOGY']
+export const PROBLEM_SUBJECTS: SubjectKey[] = ['MATH1', 'MATH2', 'MATH', 'PHYSICS', 'CHEMISTRY', 'CS', 'EARTH', 'BIOLOGY', 'CONTEST']
 
 export const UNITS: Record<string, string[]> = {
   MATH1: [

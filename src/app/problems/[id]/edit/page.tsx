@@ -28,7 +28,7 @@ export default function EditProblemPage() {
   const [answer, setAnswer] = useState('')
   const [extraAnswers, setExtraAnswers] = useState<string[]>([])
   const [extraInput, setExtraInput] = useState('')
-  const [subject, setSubject] = useState<SubjectKey>('MATH1')
+  const [subject, setSubject] = useState<SubjectKey | ''>('')
   const [preview, setPreview] = useState(false)
   const [loading, setLoading] = useState(false)
   const [uploading, setUploading] = useState(false)
@@ -50,7 +50,7 @@ export default function EditProblemPage() {
       setContent(p.content)
       setAnswer(p.answer ?? '')
       setExtraAnswers(Array.isArray(p.extraAnswers) ? p.extraAnswers : (() => { try { return JSON.parse(p.extraAnswers ?? '[]') } catch { return [] } })())
-      setSubject((p.subject as SubjectKey) ?? 'MATH1')
+      setSubject((p.subject as SubjectKey) ?? '')
 
       // Load subAnswers
       const subs: SubAnswerDef[] = (() => {
@@ -157,8 +157,9 @@ export default function EditProblemPage() {
         <div className="flex flex-wrap gap-3">
           <div className="flex-1 min-w-40">
             <label className="block text-xs font-medium text-text-secondary mb-1.5">과목</label>
-            <select value={subject} onChange={(e) => setSubject(e.target.value as SubjectKey)}
+            <select value={subject} onChange={(e) => setSubject(e.target.value as SubjectKey | '')}
               className="w-full bg-surface border border-border rounded-lg px-3 py-2 text-sm text-text-primary focus:outline-none focus:border-accent">
+              <option value="">과목 선택 안함</option>
               {PROBLEM_SUBJECTS.map((k) => (
                 <option key={k} value={k}>{SUBJECTS[k].label}</option>
               ))}

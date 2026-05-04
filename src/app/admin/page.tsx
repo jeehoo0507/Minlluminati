@@ -1159,6 +1159,24 @@ export default function AdminPage() {
 
       {/* All contests management */}
       {tab === 'allcontests' && (
+        <div className="space-y-5">
+        {/* 대회 문제 과목 일괄 수정 */}
+        <div className="bg-surface border border-border rounded-2xl p-5 flex items-center justify-between gap-4">
+          <div>
+            <p className="text-sm font-semibold text-text-primary">대회 문제 과목 일괄 수정</p>
+            <p className="text-xs text-muted mt-0.5">contestId가 있는 기존 문제들의 과목을 '대회 출제'로 일괄 변경합니다.</p>
+          </div>
+          <button
+            onClick={async () => {
+              const res = await fetch('/api/admin/contests/fix-subjects', { method: 'POST' })
+              const d = await res.json()
+              if (res.ok) toast.success(`완료: ${d.updated}개 문제 업데이트됨`)
+              else toast.error('오류 발생')
+            }}
+            className="shrink-0 px-4 py-2 rounded-lg bg-violet-600 text-white text-sm font-semibold hover:bg-violet-700 transition-colors">
+            일괄 수정 실행
+          </button>
+        </div>
         <div className="bg-surface border border-border rounded-2xl overflow-hidden">
           {contests.length === 0 ? (
             <div className="text-center py-12 text-text-secondary text-sm">대회 없음</div>
@@ -1188,6 +1206,7 @@ export default function AdminPage() {
               </tbody>
             </table>
           )}
+        </div>
         </div>
       )}
 
