@@ -111,10 +111,13 @@ export async function GET(req: NextRequest, { params }: { params: { id: string }
       if (foundPriorActive && gapDays.length > 0) {
         const daysToShield = gapDays.slice(0, availableShields)
         await prisma.$transaction([
-          prisma.streakShieldUsage.createMany({
-            data: daysToShield.map((date) => ({ userId, date })),
-            skipDuplicates: true,
-          }),
+          ...daysToShield.map((date) =>
+            prisma.streakShieldUsage.upsert({
+              where: { userId_date: { userId, date } },
+              create: { userId, date },
+              update: {},
+            })
+          ),
           prisma.user.update({
             where: { id: userId },
             data: { streakShieldsOwned: { decrement: daysToShield.length } },
