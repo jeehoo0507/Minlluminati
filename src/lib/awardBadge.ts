@@ -75,8 +75,9 @@ export async function checkContestWinBadges(userId: string) {
 
 // ── Linear algebra 문제집 완주 ────────────────────────────────────
 export async function checkLinearAlgebraBadge(userId: string) {
+  // SQLite는 mode:'insensitive' 미지원 → OR로 케이스 커버
   const problemSet = await prisma.problemSet.findFirst({
-    where: { title: { equals: 'Linear algebra', mode: 'insensitive' } },
+    where: { OR: [{ title: 'Linear algebra' }, { title: 'linear algebra' }, { title: 'Linear Algebra' }] },
     include: { items: { select: { problemId: true } } },
   })
   if (!problemSet || problemSet.items.length === 0) return
