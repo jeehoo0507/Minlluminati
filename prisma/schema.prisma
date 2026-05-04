@@ -69,6 +69,10 @@ model User {
   // Marathon
   marathonSessions MarathonSession[]
 
+  // Duel
+  challengerDuels Duel[] @relation("DuelChallenger")
+  challengedDuels Duel[] @relation("DuelChallenged")
+
   // Team contests
   teamMemberships ContestTeamMember[]
   ledTeams        ContestTeam[]       @relation("TeamLeader")
@@ -806,4 +810,51 @@ model MarathonItem {
 
   @@unique([sessionId, order])
   @@map("marathon_items")
+}
+
+// ───────────────────────────── Duel ─────────────────────────────
+
+model Duel {
+  id              String   @id @default(cuid())
+  challengerId    String
+  challengedId    String
+  status          String   @default("PENDING") // PENDING | ACTIVE | FINISHED | DECLINED
+
+  // Settings
+  excludedSubjects String  @default("[]") // JSON array of SubjectKey
+  difficulties     String  @default("[]") // JSON array of tier names
+  problemCount     Int     @default(10)
+  timeLimit        Int     @default(600)  // seconds
+
+  // Problems assigned on accept (JSON array of problem IDs)
+  problems         String  @default("[]")
+  startedAt        DateTime?
+  endedAt          DateTime?
+
+  // Scores
+  challengerScore  Int     @default(0)
+  challengedScore  Int     @default(0)
+  winnerId         String? // null = draw
+  winnerDeclared   Boolean @default(false)
+
+  challenger    User             @relation("DuelChallenger", fields: [challengerId], references: [id], onDelete: Cascade)
+  challenged    User             @relation("DuelChallenged", fields: [challengedId], references: [id], onDelete: Cascade)
+  submissions   DuelSubmission[]
+
+  createdAt     DateTime @default(now())
+
+  @@map("duels")
+}
+
+model DuelSubmission {
+  id        String   @id @default(cuid())
+  duelId    String
+  userId    String
+  problemId String
+  correct   Boolean
+  duel      Duel     @relation(fields: [duelId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+
+  @@unique([duelId, userId, problemId])
+  @@map("duel_submissions")
 }

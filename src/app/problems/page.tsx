@@ -6,7 +6,7 @@ import { Avatar } from '@/components/ui/Avatar'
 import { TierBadge } from '@/components/ui/TierBadge'
 import { ProblemTierBadge } from '@/components/ui/ProblemTierBadge'
 import { SUBJECTS, PROBLEM_SUBJECTS, timeAgo, type SubjectKey } from '@/lib/utils'
-import { Search, PenLine, ListChecks, BookOpen, BarChart2, Menu, X, CheckCircle2, Clock, SortAsc, User, Footprints } from 'lucide-react'
+import { Search, PenLine, ListChecks, BookOpen, BarChart2, Menu, X, CheckCircle2, Clock, SortAsc, User, Footprints, Swords } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
 interface Problem {
@@ -152,6 +152,14 @@ export default function ProblemsPage() {
       >
         <Footprints size={15} />
         마라톤
+      </Link>
+      <Link
+        href="/problems/randb"
+        className="w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm font-medium text-text-secondary hover:text-text-primary hover:bg-surface-2 transition-colors"
+        onClick={() => setSidebarOpen(false)}
+      >
+        <Swords size={15} />
+        randB 대결
       </Link>
 
       <div className="pt-4">
