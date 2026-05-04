@@ -105,15 +105,16 @@ export default function PublicProfilePage() {
           <img src={profile.equippedBanner.imageUrl} alt={profile.equippedBanner.name}
             className={`w-full object-cover ${profile.equippedBanner.size === 'sm' ? 'h-24' : profile.equippedBanner.size === 'lg' ? 'h-56' : 'h-40'}`} />
         )}
-        <div className="p-5 sm:p-6">
-        <div className="flex items-start gap-3 sm:gap-4">
-          <Avatar name={profile.name} image={profile.image} size={64} />
+        <div className="p-6">
+        <div className="flex items-start gap-4">
+          <Avatar name={profile.name} image={profile.image} size={72} />
           <div className="flex-1 min-w-0">
             {/* 이름 + 버튼 행 */}
             <div className="flex items-start gap-2">
+              {/* 왼쪽: min-w-0 필수 (없으면 버튼이 밀림) */}
               <div className="flex-1 min-w-0">
-                <div className="flex items-center gap-1.5 flex-wrap">
-                  <h1 className="text-lg sm:text-xl font-bold text-text-primary break-all">{profile.name ?? '?'}</h1>
+                <div className="flex items-center gap-2 flex-wrap">
+                  <h1 className="text-xl font-bold text-text-primary">{profile.name ?? '?'}</h1>
                   {/* 칭호: 선택된 title 뱃지 우선, 없으면 isFirstRuby fallback */}
                   {profile.titleBadge?.title ? (
                     <span className="text-xs font-medium italic" style={{ color: '#9ca3af' }}>{profile.titleBadge.title}</span>
@@ -121,7 +122,8 @@ export default function PublicProfilePage() {
                     <span className="text-xs font-medium italic" style={{ color: '#9ca3af' }}>first ruby</span>
                   )}
                 </div>
-                <div className="flex items-center gap-1.5 mt-1 flex-wrap">
+                {/* flex-wrap: 포인트가 길어도 아래로 내려감 */}
+                <div className="flex items-center gap-2 mt-1 flex-wrap">
                   <TierBadge points={profile.points} isMaster={profile.isMaster} />
                   <span className="text-sm font-semibold" style={{ color: profile.isMaster ? '#f59e0b' : tier.color }}>
                     {profile.isMaster ? '마스터' : tier.name}
@@ -129,22 +131,22 @@ export default function PublicProfilePage() {
                   <span className="text-sm text-muted">· {profile.points.toLocaleString()}pt</span>
                 </div>
               </div>
-              {/* 버튼: shrink-0으로 절대 줄어들지 않음 */}
+              {/* 버튼: shrink-0으로 절대 압축되지 않음, 모바일에서 텍스트만 줄임 */}
               {session?.user && !isMe && (
                 <button onClick={toggleRival} disabled={rivalLoading}
-                  className={`shrink-0 flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-semibold transition-colors whitespace-nowrap ${
+                  className={`shrink-0 flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-semibold transition-colors whitespace-nowrap ${
                     profile.isRival
                       ? 'border border-border text-text-secondary hover:text-red-400 hover:border-red-300'
                       : 'bg-accent text-white hover:bg-accent-dim'
                   }`}
                 >
                   {profile.isRival
-                    ? <><UserMinus size={13} /> 라이벌 해제</>
-                    : <><UserPlus size={13} /> 라이벌</>}
+                    ? <><UserMinus size={13} /> <span className="hidden sm:inline">라이벌 </span>해제</>
+                    : <><UserPlus size={13} /> <span className="hidden sm:inline">라이벌 </span>등록</>}
                 </button>
               )}
               {isMe && (
-                <Link href="/profile" className="shrink-0 px-2.5 py-1.5 rounded-lg border border-border text-xs text-text-secondary hover:text-text-primary transition-colors whitespace-nowrap">
+                <Link href="/profile" className="shrink-0 px-3 py-1.5 rounded-lg border border-border text-sm text-text-secondary hover:text-text-primary transition-colors whitespace-nowrap">
                   프로필 편집
                 </Link>
               )}
