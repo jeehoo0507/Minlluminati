@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server'
 import { prisma } from '@/lib/db'
 import { getAuth } from '@/lib/auth'
 import { awardBadge } from '@/lib/awardBadge'
+import { getFirstRubyUserId } from '@/lib/scoring'
 export const dynamic = 'force-dynamic'
 
 export async function POST() {
@@ -73,6 +74,12 @@ export async function POST() {
       errors.push(`user ${userId}: ${e}`)
     }
   }
+
+  // ── first ruby: 최초 루비 달성자 ─────────────────────────────────
+  try {
+    const firstRubyId = await getFirstRubyUserId()
+    if (firstRubyId && await awardBadge(firstRubyId, 'hidden_first_ruby')) awarded++
+  } catch (e) { errors.push(`first_ruby: ${e}`) }
 
   return NextResponse.json({ ok: true, awarded, users: users.length, errors })
 }
