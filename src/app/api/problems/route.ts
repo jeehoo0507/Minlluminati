@@ -12,6 +12,7 @@ export async function GET(req: NextRequest) {
   const author = searchParams.get('author')
   const sort = searchParams.get('sort') ?? 'number_desc'
   const solved = searchParams.get('solved') // 'solved' | 'unsolved' | null
+  const contestOnly = searchParams.get('contest') === 'true'
   const page = parseInt(searchParams.get('page') ?? '1')
   const limit = parseInt(searchParams.get('limit') ?? '20')
   const skip = (page - 1) * limit
@@ -31,6 +32,7 @@ export async function GET(req: NextRequest) {
   const andClauses: Record<string, unknown>[] = []
   if (visibilityClause) andClauses.push(visibilityClause)
   if (subject) andClauses.push({ subject })
+  if (contestOnly) andClauses.push({ contestId: { not: null } })
   if (search) {
     const hashMatch = search.trim().match(/^#(\d+)$/)
     if (hashMatch) {

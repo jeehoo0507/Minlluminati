@@ -48,6 +48,7 @@ export default function ProblemsPage() {
     if (typeof window !== 'undefined') return (localStorage.getItem('problems_solved') as 'all' | 'solved' | 'unsolved') ?? 'all'
     return 'all'
   })
+  const [contestOnly, setContestOnly] = useState(false)
   const [authorSearch, setAuthorSearch] = useState('')
   const [authorQuery, setAuthorQuery] = useState('')
   const [loading, setLoading] = useState(false)
@@ -71,6 +72,7 @@ export default function ProblemsPage() {
       if (sort) params.set('sort', sort)
       if (authorQuery) params.set('author', authorQuery)
       if (solvedFilter !== 'all') params.set('solved', solvedFilter)
+      if (contestOnly) params.set('contest', 'true')
       const res = await fetch(`/api/problems?${params}`)
       if (res.ok) {
         const data = await res.json()
@@ -81,7 +83,7 @@ export default function ProblemsPage() {
     } finally {
       setLoading(false)
     }
-  }, [page, query, subject, sort, authorQuery, solvedFilter])
+  }, [page, query, subject, sort, authorQuery, solvedFilter, contestOnly])
 
   useEffect(() => { load() }, [load])
 
@@ -110,6 +112,14 @@ export default function ProblemsPage() {
 
   function handleSubjectFilter(key: string) {
     setSubject(key === subject ? '' : key)
+    setContestOnly(false)
+    setPage(1)
+    setSidebarOpen(false)
+  }
+
+  function handleContestFilter() {
+    setContestOnly((prev) => !prev)
+    setSubject('')
     setPage(1)
     setSidebarOpen(false)
   }
@@ -139,13 +149,22 @@ export default function ProblemsPage() {
       <div className="pt-4">
         <p className="px-3 mb-1 text-xs font-semibold text-muted uppercase tracking-wider">과목 필터</p>
         <button
-          onClick={() => handleSubjectFilter('')}
+          onClick={() => { setSubject(''); setContestOnly(false); setPage(1); setSidebarOpen(false) }}
           className={cn(
             'w-full flex items-center px-3 py-1.5 rounded-lg text-sm transition-colors',
-            !subject ? 'text-accent bg-accent/10 font-medium' : 'text-text-secondary hover:text-text-primary hover:bg-surface-2'
+            !subject && !contestOnly ? 'text-accent bg-accent/10 font-medium' : 'text-text-secondary hover:text-text-primary hover:bg-surface-2'
           )}
         >
           전체
+        </button>
+        <button
+          onClick={handleContestFilter}
+          className={cn(
+            'w-full flex items-center px-3 py-1.5 rounded-lg text-sm transition-colors',
+            contestOnly ? 'text-accent bg-accent/10 font-medium' : 'text-text-secondary hover:text-text-primary hover:bg-surface-2'
+          )}
+        >
+          🏆 대회 출제
         </button>
         {PROBLEM_SUBJECTS.map((key) => (
           <button
@@ -262,7 +281,7 @@ export default function ProblemsPage() {
         </div>
 
         {/* Active filters */}
-        {(query || subject || authorQuery || solvedFilter !== 'all') && (
+        {(query || subject || authorQuery || solvedFilter !== 'all' || contestOnly) && (
           <div className="flex items-center gap-2 flex-wrap">
             {query && (
               <span className="flex items-center gap-1 px-2 py-0.5 bg-surface-2 border border-border rounded-md text-xs text-text-secondary">
@@ -280,6 +299,12 @@ export default function ProblemsPage() {
               <span className="flex items-center gap-1 px-2 py-0.5 bg-surface-2 border border-border rounded-md text-xs text-text-secondary">
                 과목: {SUBJECTS[subject as SubjectKey]?.label}
                 <button onClick={() => setSubject('')} className="ml-1 hover:text-red-400"><X size={10} /></button>
+              </span>
+            )}
+            {contestOnly && (
+              <span className="flex items-center gap-1 px-2 py-0.5 bg-violet-500/10 border border-violet-400/40 rounded-md text-xs text-violet-500">
+                🏆 대회 출제
+                <button onClick={() => setContestOnly(false)} className="ml-1 hover:text-red-400"><X size={10} /></button>
               </span>
             )}
             {session?.user && solvedFilter !== 'all' && (
