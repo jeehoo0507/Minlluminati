@@ -27,14 +27,24 @@ const config: Config = {
           from: { transform: 'translateX(100%)' },
           to: { transform: 'translateX(0)' },
         },
+        'slide-in-left': {
+          from: { transform: 'translateX(-100%)' },
+          to: { transform: 'translateX(0)' },
+        },
         'fade-in': {
           from: { opacity: '0', transform: 'translateY(-4px)' },
           to: { opacity: '1', transform: 'translateY(0)' },
         },
+        'fade-in-backdrop': {
+          from: { opacity: '0' },
+          to: { opacity: '1' },
+        },
       },
       animation: {
-        'slide-in-right': 'slide-in-right 0.2s ease-out',
+        'slide-in-right': 'slide-in-right 0.25s cubic-bezier(0.32,0.72,0,1)',
+        'slide-in-left': 'slide-in-left 0.25s cubic-bezier(0.32,0.72,0,1)',
         'fade-in': 'fade-in 0.15s ease-out',
+        'fade-in-backdrop': 'fade-in-backdrop 0.2s ease-out',
       },
     },
   },

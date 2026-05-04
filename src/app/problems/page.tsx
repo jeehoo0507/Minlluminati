@@ -194,11 +194,19 @@ export default function ProblemsPage() {
       {/* Mobile Sidebar */}
       {sidebarOpen && (
         <>
-          <div className="fixed inset-0 z-40 bg-black/50 lg:hidden" onClick={() => setSidebarOpen(false)} />
-          <div className="fixed inset-y-0 left-0 z-50 w-64 bg-background border-r border-border p-4 overflow-y-auto lg:hidden">
+          <div
+            className="fixed inset-0 z-40 bg-black/50 lg:hidden animate-fade-in-backdrop"
+            onClick={() => setSidebarOpen(false)}
+          />
+          <div className="fixed inset-y-0 left-0 z-50 w-64 bg-background border-r border-border p-4 overflow-y-auto lg:hidden animate-slide-in-left">
             <div className="flex items-center justify-between mb-4">
-              <span className="font-semibold text-text-primary text-sm">문제 목록</span>
-              <button onClick={() => setSidebarOpen(false)}><X size={16} className="text-muted" /></button>
+              <span className="font-semibold text-text-primary text-sm">필터</span>
+              <button
+                onClick={() => setSidebarOpen(false)}
+                className="p-1.5 rounded-lg hover:bg-surface-2 transition-colors"
+              >
+                <X size={16} className="text-muted" />
+              </button>
             </div>
             <SidebarContent />
           </div>
