@@ -204,6 +204,14 @@ export default function AdminPage() {
   const [editBannerUploading, setEditBannerUploading] = useState(false)
   const [cropperData, setCropperData] = useState<{ imageSrc: string; forEdit: boolean } | null>(null)
 
+  // Badges
+  type AdminBadge = { id: string; key: string; name: string; description: string; imageUrl: string | null; title: string | null; isHidden: boolean; isActive: boolean; sortOrder: number }
+  const [adminBadges, setAdminBadges] = useState<AdminBadge[]>([])
+  const [editingAdminBadge, setEditingAdminBadge] = useState<AdminBadge | null>(null)
+  const [badgeSavingAdmin, setBadgeSavingAdmin] = useState(false)
+  const badgeImgRef = useRef<HTMLInputElement>(null)
+  const [badgeImgUploading, setBadgeImgUploading] = useState(false)
+
   useEffect(() => {
     if (status === 'loading') return
     if (session?.user?.role !== 'ADMIN') { router.replace('/feed'); return }
@@ -250,6 +258,56 @@ export default function AdminPage() {
   async function loadShopAdmin() {
     const res = await fetch('/api/admin/shop')
     if (res.ok) { const d = await res.json(); setShopBanners(d.banners); setShieldPrice(d.shieldPrice) }
+  }
+
+  async function loadAdminBadges() {
+    const res = await fetch('/api/admin/badges')
+    if (res.ok) setAdminBadges(await res.json())
+  }
+
+  async function saveBadgeEdit() {
+    if (!editingAdminBadge) return
+    setBadgeSavingAdmin(true)
+    try {
+      const res = await fetch('/api/admin/badges', {
+        method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(editingAdminBadge),
+      })
+      if (res.ok) { toast.success('뱃지 수정 완료'); setEditingAdminBadge(null); loadAdminBadges() }
+      else toast.error('수정 실패')
+    } finally { setBadgeSavingAdmin(false) }
+  }
+
+  async function handleBadgeImageUpload(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0]; if (!file) return
+    if (badgeImgRef.current) badgeImgRef.current.value = ''
+    setBadgeImgUploading(true)
+    try {
+      const fd = new FormData(); fd.append('file', file)
+      const res = await fetch('/api/upload', { method: 'POST', body: fd })
+      if (!res.ok) { toast.error('업로드 실패'); return }
+      const data = await res.json()
+      setEditingAdminBadge((p) => p ? { ...p, imageUrl: data.url } : p)
+      toast.success('이미지 업로드 완료')
+    } finally { setBadgeImgUploading(false) }
+  }
+
+  function confirmDeleteBadge(badge: AdminBadge) {
+    setConfirmAction({
+      title: `뱃지 삭제: "${badge.name}"`,
+      description: '이 뱃지를 보유한 모든 유저의 뱃지 데이터도 함께 삭제됩니다.',
+      onConfirm: async (pw) => {
+        const res = await fetch('/api/admin/badges', {
+          method: 'DELETE', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ id: badge.id, adminPassword: pw }),
+        })
+        const data = await res.json()
+        if (!res.ok) throw new Error(data.error ?? '삭제 실패')
+        toast.success('뱃지 삭제 완료')
+        setConfirmAction(null)
+        loadAdminBadges()
+      },
+    })
   }
 
   async function saveShieldPrice() {
@@ -674,6 +732,7 @@ export default function AdminPage() {
     { key: 'daily', label: '일일 현황' },
     { key: 'notice', label: '공지 발송' },
     { key: 'shop', label: '상점 관리' },
+    { key: 'badges', label: '뱃지 관리' },
     ...(isOwner ? [{ key: 'reset', label: '⚠️ 초기화' }] : []),
   ]
 
@@ -1417,6 +1476,106 @@ export default function AdminPage() {
               </div>
             </div>
           )}
+        </div>
+      )}
+
+      {/* Badges */}
+      {tab === 'badges' && (
+        <div className="space-y-5" ref={(el) => { if (el && adminBadges.length === 0) loadAdminBadges() }}>
+          <input ref={badgeImgRef} type="file" accept="image/*" className="hidden" onChange={handleBadgeImageUpload} />
+          <div className="bg-surface border border-border rounded-2xl overflow-hidden">
+            <div className="px-5 py-4 border-b border-border bg-surface-2 flex items-center justify-between">
+              <h3 className="text-sm font-semibold text-text-secondary">뱃지 목록 ({adminBadges.length})</h3>
+              <p className="text-xs text-muted">이미지 없는 뱃지는 초성 표시. 수정 후 저장.</p>
+            </div>
+            <div className="divide-y divide-border">
+              {adminBadges.map((b) => (
+                <div key={b.id} className="p-4">
+                  {editingAdminBadge?.id === b.id ? (
+                    <div className="space-y-2">
+                      {/* Image preview */}
+                      <div className="flex items-center gap-3">
+                        {editingAdminBadge.imageUrl ? (
+                          // eslint-disable-next-line @next/next/no-img-element
+                          <img src={editingAdminBadge.imageUrl} alt="" className="w-12 h-12 rounded-full object-cover border border-border" />
+                        ) : (
+                          <div className="w-12 h-12 rounded-full bg-accent/10 border border-accent/20 flex items-center justify-center text-lg font-bold text-accent">
+                            {editingAdminBadge.name.slice(0, 1)}
+                          </div>
+                        )}
+                        <button type="button" onClick={() => badgeImgRef.current?.click()} disabled={badgeImgUploading}
+                          className="px-3 py-1.5 text-xs rounded-lg border border-dashed border-border text-text-secondary hover:border-accent hover:text-text-primary transition-colors disabled:opacity-50">
+                          {badgeImgUploading ? '업로드 중...' : '이미지 변경'}
+                        </button>
+                        {editingAdminBadge.imageUrl && (
+                          <button type="button" onClick={() => setEditingAdminBadge((p) => p ? { ...p, imageUrl: null } : p)}
+                            className="text-xs text-red-400 hover:text-red-300">제거</button>
+                        )}
+                      </div>
+                      <div className="grid grid-cols-2 gap-2">
+                        <input value={editingAdminBadge.name} onChange={(e) => setEditingAdminBadge((p) => p ? { ...p, name: e.target.value } : p)}
+                          placeholder="뱃지 이름" className="bg-background border border-border rounded-lg px-2 py-1.5 text-sm text-text-primary focus:outline-none focus:border-accent" />
+                        <input value={editingAdminBadge.title ?? ''} onChange={(e) => setEditingAdminBadge((p) => p ? { ...p, title: e.target.value || null } : p)}
+                          placeholder="칭호 (없으면 비워두기)" className="bg-background border border-border rounded-lg px-2 py-1.5 text-sm text-text-primary focus:outline-none focus:border-accent" />
+                        <input value={editingAdminBadge.description} onChange={(e) => setEditingAdminBadge((p) => p ? { ...p, description: e.target.value } : p)}
+                          placeholder="설명" className="col-span-full bg-background border border-border rounded-lg px-2 py-1.5 text-sm text-text-primary focus:outline-none focus:border-accent" />
+                      </div>
+                      <div className="flex items-center gap-3">
+                        <label className="flex items-center gap-1.5 text-xs text-text-secondary cursor-pointer">
+                          <input type="checkbox" checked={editingAdminBadge.isHidden} onChange={(e) => setEditingAdminBadge((p) => p ? { ...p, isHidden: e.target.checked } : p)} />
+                          히든 뱃지
+                        </label>
+                        <label className="flex items-center gap-1.5 text-xs text-text-secondary cursor-pointer">
+                          <input type="checkbox" checked={editingAdminBadge.isActive} onChange={(e) => setEditingAdminBadge((p) => p ? { ...p, isActive: e.target.checked } : p)} />
+                          활성
+                        </label>
+                      </div>
+                      <div className="flex gap-2">
+                        <button onClick={saveBadgeEdit} disabled={badgeSavingAdmin}
+                          className="flex-1 py-1.5 rounded-lg bg-accent text-background text-xs font-semibold hover:bg-accent-dim transition-colors disabled:opacity-50">
+                          {badgeSavingAdmin ? '저장 중...' : '저장'}
+                        </button>
+                        <button onClick={() => setEditingAdminBadge(null)}
+                          className="px-3 py-1.5 rounded-lg border border-border text-xs text-text-secondary hover:text-text-primary transition-colors">
+                          취소
+                        </button>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="flex items-center gap-3">
+                      {b.imageUrl ? (
+                        // eslint-disable-next-line @next/next/no-img-element
+                        <img src={b.imageUrl} alt={b.name} className="w-10 h-10 rounded-full object-cover border border-border shrink-0" />
+                      ) : (
+                        <div className="w-10 h-10 rounded-full bg-accent/10 border border-accent/20 flex items-center justify-center text-base font-bold text-accent shrink-0">
+                          {b.name.slice(0, 1)}
+                        </div>
+                      )}
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <p className="font-medium text-text-primary text-sm">{b.name}</p>
+                          {b.title && <span className="text-[10px] italic text-muted border border-border rounded px-1">{b.title}</span>}
+                          {b.isHidden && <span className="text-[10px] text-orange-400 border border-orange-400/30 rounded px-1">히든</span>}
+                          {!b.isActive && <span className="text-[10px] text-red-400 border border-red-400/30 rounded px-1">비활성</span>}
+                        </div>
+                        <p className="text-xs text-muted truncate">{b.description}</p>
+                      </div>
+                      <div className="flex items-center gap-1.5 shrink-0">
+                        <button onClick={() => setEditingAdminBadge(b)}
+                          className="p-1.5 rounded-lg text-muted hover:text-accent hover:bg-accent/10 transition-colors">
+                          <Pencil size={13} />
+                        </button>
+                        <button onClick={() => confirmDeleteBadge(b)}
+                          className="p-1.5 rounded-lg text-muted hover:text-red-400 hover:bg-red-400/10 transition-colors">
+                          <X size={14} />
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+          </div>
         </div>
       )}
 

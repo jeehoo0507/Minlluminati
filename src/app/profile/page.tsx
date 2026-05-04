@@ -22,6 +22,13 @@ interface ShopData {
   banners: BannerItem[]
   ownedBanners: OwnedBanner[]
 }
+interface BadgeInfo { id: string; key: string; name: string; imageUrl: string | null; title: string | null; isHidden: boolean }
+interface OwnedBadge { id: string; badgeId: string; awardedAt: string; badge: BadgeInfo }
+interface BadgeSelectData {
+  ownedBadges: OwnedBadge[]
+  selectedBadgeIds: string[]
+  selectedTitleId: string | null
+}
 interface ProfileData {
   streakMap: Record<string, number>
   pointTimeline: { date: string; points: number }[]
@@ -62,6 +69,11 @@ export default function ProfilePage() {
   const [buyingId, setBuyingId] = useState<string | null>(null)
   const [equippingId, setEquippingId] = useState<string | null>(null)
 
+  // Badges
+  const [badgeData, setBadgeData] = useState<BadgeSelectData | null>(null)
+  const [badgeOpen, setBadgeOpen] = useState(false)
+  const [badgeSaving, setBadgeSaving] = useState(false)
+
   async function loadStreak(userId: string, year: number) {
     const res = await fetch(`/api/users/${userId}/streak?year=${year}`)
     if (res.ok) setStreakData(await res.json())
@@ -75,6 +87,36 @@ export default function ProfilePage() {
   async function loadShop() {
     const res = await fetch('/api/shop')
     if (res.ok) setShopData(await res.json())
+  }
+
+  async function loadBadges() {
+    const res = await fetch('/api/badges')
+    if (res.ok) setBadgeData(await res.json())
+  }
+
+  async function saveBadges(selectedBadgeIds: string[], selectedTitleId: string | null) {
+    setBadgeSaving(true)
+    try {
+      const res = await fetch('/api/badges', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ selectedBadgeIds, selectedTitleId }),
+      })
+      if (res.ok) { await loadBadges(); toast.success('뱃지 설정 저장') }
+      else toast.error('저장 실패')
+    } finally { setBadgeSaving(false) }
+  }
+
+  function toggleBadgeSelection(badgeId: string) {
+    if (!badgeData) return
+    const cur = badgeData.selectedBadgeIds
+    const next = cur.includes(badgeId) ? cur.filter((id) => id !== badgeId) : [...cur, badgeId]
+    setBadgeData({ ...badgeData, selectedBadgeIds: next })
+  }
+
+  function selectTitle(badgeId: string | null) {
+    if (!badgeData) return
+    setBadgeData({ ...badgeData, selectedTitleId: badgeId === badgeData.selectedTitleId ? null : badgeId })
   }
 
   useEffect(() => {
@@ -266,6 +308,72 @@ export default function ProfilePage() {
                 className="w-full py-2 rounded-lg bg-surface-2 border border-border text-sm font-semibold text-text-primary hover:bg-surface-2 hover:border-border-2 transition-colors disabled:opacity-50 whitespace-nowrap">
                 {pwLoading ? '변경 중...' : '비밀번호 변경'}
               </button>
+            </div>
+          )}
+        </div>
+
+        {/* Badge section */}
+        <div className="border-t border-border pt-4">
+          <button onClick={() => { setBadgeOpen((v) => !v); if (!badgeData) loadBadges() }}
+            className="flex items-center gap-1.5 text-sm text-text-secondary hover:text-text-primary transition-colors w-full justify-between">
+            <span className="flex items-center gap-1.5">
+              🏅 내 뱃지
+              {badgeData && <span className="ml-1 text-xs font-semibold text-accent">{badgeData.ownedBadges.length}개 보유</span>}
+            </span>
+            <span className="text-xs text-muted">{badgeOpen ? '▲' : '▼'}</span>
+          </button>
+          {badgeOpen && badgeData && (
+            <div className="mt-3 space-y-4">
+              {badgeData.ownedBadges.length === 0 ? (
+                <p className="text-xs text-muted">아직 획득한 뱃지가 없습니다</p>
+              ) : (
+                <>
+                  <p className="text-xs text-muted">클릭해서 표시할 뱃지 선택 (여러 개 가능)</p>
+                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                    {badgeData.ownedBadges.map(({ badgeId, badge }) => {
+                      const isSelected = badgeData.selectedBadgeIds.includes(badgeId)
+                      const isTitleSelected = badgeData.selectedTitleId === badgeId
+                      return (
+                        <div key={badgeId}
+                          className={`relative rounded-xl border p-3 cursor-pointer transition-all ${isSelected ? 'border-accent bg-accent/5' : 'border-border hover:border-border/80'}`}
+                          onClick={() => toggleBadgeSelection(badgeId)}>
+                          <div className="flex items-center gap-2">
+                            {badge.imageUrl ? (
+                              // eslint-disable-next-line @next/next/no-img-element
+                              <img src={badge.imageUrl} alt={badge.name} className="w-8 h-8 rounded-full object-cover border border-border shrink-0" />
+                            ) : (
+                              <div className="w-8 h-8 rounded-full bg-accent/10 border border-accent/20 flex items-center justify-center text-sm font-bold text-accent shrink-0">
+                                {badge.name.slice(0, 1)}
+                              </div>
+                            )}
+                            <div className="min-w-0">
+                              <p className="text-xs font-semibold text-text-primary truncate">{badge.name}</p>
+                              {badge.title && (
+                                <p className="text-[10px] text-muted italic truncate">{badge.title}</p>
+                              )}
+                            </div>
+                          </div>
+                          {isSelected && (
+                            <div className="absolute top-1.5 right-1.5 w-3 h-3 bg-accent rounded-full" />
+                          )}
+                          {/* 칭호 선택 버튼 */}
+                          {badge.title && (
+                            <button
+                              onClick={(e) => { e.stopPropagation(); selectTitle(badgeId) }}
+                              className={`mt-2 w-full text-[10px] py-0.5 rounded-md border transition-colors ${isTitleSelected ? 'border-accent bg-accent text-white' : 'border-border text-muted hover:text-text-primary'}`}>
+                              {isTitleSelected ? '✓ 칭호 선택됨' : '칭호로 설정'}
+                            </button>
+                          )}
+                        </div>
+                      )
+                    })}
+                  </div>
+                  <button onClick={() => saveBadges(badgeData.selectedBadgeIds, badgeData.selectedTitleId)} disabled={badgeSaving}
+                    className="w-full py-2 rounded-xl bg-accent text-white text-sm font-semibold hover:bg-accent-dim transition-colors disabled:opacity-50">
+                    {badgeSaving ? '저장 중...' : '뱃지 설정 저장'}
+                  </button>
+                </>
+              )}
             </div>
           )}
         </div>

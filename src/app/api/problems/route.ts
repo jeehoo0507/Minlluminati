@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/db'
 import { getAuth } from '@/lib/auth'
+import { checkUploadBadges } from '@/lib/awardBadge'
 
 export const dynamic = 'force-dynamic'
 
@@ -138,5 +139,6 @@ export async function POST(req: NextRequest) {
     },
   })
 
+  checkUploadBadges(session.user.id).catch(() => {})
   return NextResponse.json(problem, { status: 201 })
 }

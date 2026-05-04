@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/db'
 import { getAuth } from '@/lib/auth'
+import { checkSolveBadges } from '@/lib/awardBadge'
 
 export const dynamic = 'force-dynamic'
 
@@ -109,6 +110,11 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
         })),
       })
     }
+  }
+
+  // Badge checks (fire-and-forget — don't delay response)
+  if (correct && !wasAlreadyCorrect) {
+    checkSolveBadges(session.user.id).catch(() => {})
   }
 
   return NextResponse.json({ correct, pointsAwarded, multiPart: subAnswerDefs.length > 0, isSelfSolve })

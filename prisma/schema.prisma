@@ -80,6 +80,11 @@ model User {
   streakShields      StreakShieldUsage[]
   userBanners        UserBanner[]
 
+  // Badges
+  selectedBadgeIds  String   @default("[]") // JSON array of badge IDs to display
+  selectedTitleId   String?               // badge ID of selected title
+  userBadges        UserBadge[]
+
   @@map("users")
 }
 
@@ -719,6 +724,37 @@ model UserBanner {
 
   @@unique([userId, bannerItemId])
   @@map("user_banners")
+}
+
+// ───────────────────────────── Badges ─────────────────────────────
+
+model Badge {
+  id          String      @id @default(cuid())
+  key         String      @unique // e.g. "solve_50", "hidden_first_ruby"
+  name        String
+  description String      @default("")
+  imageUrl    String?
+  title       String?     // 칭호 text shown next to username, null if no title
+  isHidden    Boolean     @default(false)
+  isActive    Boolean     @default(true)
+  sortOrder   Int         @default(0)
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
+  userBadges  UserBadge[]
+
+  @@map("badges")
+}
+
+model UserBadge {
+  id        String   @id @default(cuid())
+  userId    String
+  badgeId   String
+  awardedAt DateTime @default(now())
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  badge     Badge    @relation(fields: [badgeId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, badgeId])
+  @@map("user_badges")
 }
 
 model PointHistory {

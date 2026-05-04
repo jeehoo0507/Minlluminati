@@ -125,6 +125,23 @@ export async function GET(_: NextRequest, { params }: { params: { id: string } }
     include: { bannerItem: true },
   })
 
+  // Badges
+  const userWithBadges = await prisma.user.findUnique({
+    where: { id: userId },
+    select: {
+      selectedBadgeIds: true,
+      selectedTitleId: true,
+      userBadges: { include: { badge: true }, orderBy: { awardedAt: 'asc' } },
+    },
+  })
+  const selectedBadgeIds: string[] = JSON.parse(userWithBadges?.selectedBadgeIds ?? '[]')
+  const selectedBadges = (userWithBadges?.userBadges ?? [])
+    .filter((ub) => selectedBadgeIds.includes(ub.badgeId))
+    .map((ub) => ub.badge)
+  const titleBadge = userWithBadges?.selectedTitleId
+    ? userWithBadges.userBadges.find((ub) => ub.badgeId === userWithBadges.selectedTitleId)?.badge ?? null
+    : null
+
   // Rivals info
   const myRivals = session?.user
     ? await prisma.rival.findMany({ where: { userId: session.user.id }, select: { rivalId: true } })
@@ -162,5 +179,7 @@ export async function GET(_: NextRequest, { params }: { params: { id: string } }
     isFirstRuby,
     rivals: rivals.map((r) => r.rival),
     equippedBanner: equippedBanner?.bannerItem ?? null,
+    selectedBadges,
+    titleBadge,
   })
 }

@@ -15,6 +15,7 @@ import { getTier } from '@/lib/scoring'
 import toast from 'react-hot-toast'
 
 interface BannerItem { id: string; name: string; imageUrl: string; size: string }
+interface BadgeInfo { id: string; key: string; name: string; imageUrl: string | null; title: string | null; isHidden: boolean }
 interface UserProfile {
   id: string; name?: string | null; image?: string | null
   points: number; role: string; createdAt: string
@@ -31,6 +32,8 @@ interface UserProfile {
   isFirstRuby: boolean
   rivals: { id: string; name?: string | null; image?: string | null; points: number }[]
   equippedBanner: BannerItem | null
+  selectedBadges: BadgeInfo[]
+  titleBadge: BadgeInfo | null
 }
 
 export default function PublicProfilePage() {
@@ -110,7 +113,10 @@ export default function PublicProfilePage() {
               <div>
                 <div className="flex items-center gap-2 flex-wrap">
                   <h1 className="text-xl font-bold text-text-primary">{profile.name ?? '?'}</h1>
-                  {profile.isFirstRuby && (
+                  {/* 칭호: 선택된 title 뱃지 우선, 없으면 isFirstRuby fallback */}
+                  {profile.titleBadge?.title ? (
+                    <span className="text-xs font-medium italic" style={{ color: '#9ca3af' }}>{profile.titleBadge.title}</span>
+                  ) : profile.isFirstRuby && (
                     <span className="text-xs font-medium italic" style={{ color: '#9ca3af' }}>first ruby</span>
                   )}
                 </div>
@@ -139,6 +145,26 @@ export default function PublicProfilePage() {
                 </Link>
               )}
             </div>
+            {/* 선택된 뱃지 */}
+            {profile.selectedBadges.length > 0 && (
+              <div className="flex flex-wrap gap-1.5 mt-2">
+                {profile.selectedBadges.map((b) => (
+                  <div key={b.id} title={b.name} className="group relative">
+                    {b.imageUrl ? (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img src={b.imageUrl} alt={b.name} className="w-7 h-7 rounded-full object-cover border border-border" />
+                    ) : (
+                      <div className="w-7 h-7 rounded-full bg-accent/10 border border-accent/20 flex items-center justify-center text-[10px] font-bold text-accent">
+                        {b.name.slice(0, 1)}
+                      </div>
+                    )}
+                    <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-1.5 hidden group-hover:block z-10 bg-surface border border-border rounded-lg px-2 py-1 text-[11px] text-text-primary whitespace-nowrap shadow-lg">
+                      {b.name}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
             <div className="flex items-center gap-4 mt-3 text-xs text-muted">
               <span className="flex items-center gap-1"><FileText size={11} />{profile._count.posts}개 작성</span>
               <span className="flex items-center gap-1"><MessageSquare size={11} />{profile._count.comments}개 댓글</span>

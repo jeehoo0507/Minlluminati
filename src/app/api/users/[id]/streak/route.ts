@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/db'
 import { getAuth } from '@/lib/auth'
+import { checkStreakBadges } from '@/lib/awardBadge'
 export const dynamic = 'force-dynamic'
 
 // Holiday dates that never break streaks (YYYY-MM-DD, KST)
@@ -140,6 +141,9 @@ export async function GET(req: NextRequest, { params }: { params: { id: string }
     streak++
     check.setDate(check.getDate() - 1)
   }
+
+  // Streak badge check (fire-and-forget)
+  if (streak > 0) checkStreakBadges(userId, streak).catch(() => {})
 
   return NextResponse.json({ streakMap, streak, year, shieldMap })
 }

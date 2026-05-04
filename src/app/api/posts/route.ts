@@ -1,8 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/db'
+import { getAuth } from '@/lib/auth'
+import { checkFeedBadges } from '@/lib/awardBadge'
 
 export const dynamic = 'force-dynamic'
-import { getAuth } from '@/lib/auth'
 
 export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url)
@@ -87,5 +88,6 @@ export async function POST(req: NextRequest) {
     },
   })
 
+  checkFeedBadges(session.user.id).catch(() => {})
   return NextResponse.json(post, { status: 201 })
 }

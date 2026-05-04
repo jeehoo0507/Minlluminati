@@ -2,6 +2,42 @@ export async function register() {
   if (process.env.NEXT_RUNTIME === 'nodejs') {
     const cron = await import('node-cron')
     const { prisma } = await import('./lib/db')
+    const { BADGE_DEFS } = await import('./lib/badgeDefs')
+    const { awardBadge } = await import('./lib/awardBadge')
+
+    // ── 뱃지 시드: 정의된 뱃지가 DB에 없으면 생성 ──────────────────
+    try {
+      for (const def of BADGE_DEFS) {
+        await prisma.badge.upsert({
+          where: { key: def.key },
+          create: {
+            key: def.key,
+            name: def.name,
+            description: def.description,
+            title: def.title ?? null,
+            isHidden: def.isHidden,
+            sortOrder: def.sortOrder,
+          },
+          update: {
+            name: def.name,
+            description: def.description,
+            title: def.title ?? null,
+            isHidden: def.isHidden,
+            sortOrder: def.sortOrder,
+          },
+        })
+      }
+      console.log('[badge-seed] 뱃지 시드 완료')
+
+      // first ruby 뱃지: 기존 first ruby 유저에게 자동 지급
+      const { getFirstRubyUserId } = await import('./lib/scoring')
+      const firstRubyId = await getFirstRubyUserId()
+      if (firstRubyId) {
+        await awardBadge(firstRubyId, 'hidden_first_ruby')
+      }
+    } catch (e) {
+      console.error('[badge-seed] 오류:', e)
+    }
 
     // Run at 00:00 KST every day
     cron.default.schedule(
