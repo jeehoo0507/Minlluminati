@@ -13,6 +13,41 @@ const DUEL_TIERS: Record<string, { min: number; max: number }> = {
   '다이아':  { min: 500, max: 99999 },
 }
 
+async function finalizeDuel(duelId: string, winnerId: string | null, challengerScore: number, challengedScore: number) {
+  const duel = await prisma.duel.findUnique({ where: { id: duelId } })
+  if (!duel || duel.winnerDeclared) return
+
+  await prisma.duel.update({
+    where: { id: duelId },
+    data: {
+      status: 'FINISHED',
+      endedAt: new Date(),
+      challengerScore,
+      challengedScore,
+      winnerId,
+      winnerDeclared: true,
+    },
+  })
+
+  const notifFor = (myId: string) => ({
+    title: !winnerId ? '대결 무승부' : winnerId === myId ? '대결 승리! 🎉' : '대결 패배',
+    content: !winnerId
+      ? '대결이 무승부로 종료되었습니다.'
+      : winnerId === myId
+        ? `대결에서 승리했습니다! 🎉`
+        : '대결에서 패배했습니다.',
+  })
+
+  await Promise.all([
+    prisma.notification.create({
+      data: { userId: duel.challengerId, type: 'DUEL_RESULT', ...notifFor(duel.challengerId), link: `/problems/randb/${duelId}` },
+    }),
+    prisma.notification.create({
+      data: { userId: duel.challengedId, type: 'DUEL_RESULT', ...notifFor(duel.challengedId), link: `/problems/randb/${duelId}` },
+    }),
+  ])
+}
+
 async function checkAndFinalizeDuel(duelId: string) {
   const duel = await prisma.duel.findUnique({
     where: { id: duelId },
@@ -27,69 +62,36 @@ async function checkAndFinalizeDuel(duelId: string) {
   const timeExpired = endTime ? now >= endTime : false
 
   const problemIds: string[] = JSON.parse(duel.problems)
-  const challengerCorrect = duel.submissions.filter(
-    (s) => s.userId === duel.challengerId && s.correct,
-  ).length
-  const challengedCorrect = duel.submissions.filter(
-    (s) => s.userId === duel.challengedId && s.correct,
-  ).length
+  const challengerCorrect = duel.submissions.filter(s => s.userId === duel.challengerId && s.correct).length
+  const challengedCorrect = duel.submissions.filter(s => s.userId === duel.challengedId && s.correct).length
 
-  const challengerDone = problemIds.every((pid) =>
-    duel.submissions.some((s) => s.userId === duel.challengerId && s.problemId === pid && s.correct),
+  const challengerDone = problemIds.every(pid =>
+    duel.submissions.some(s => s.userId === duel.challengerId && s.problemId === pid && s.correct),
   )
-  const challengedDone = problemIds.every((pid) =>
-    duel.submissions.some((s) => s.userId === duel.challengedId && s.problemId === pid && s.correct),
+  const challengedDone = problemIds.every(pid =>
+    duel.submissions.some(s => s.userId === duel.challengedId && s.problemId === pid && s.correct),
   )
 
-  if (!timeExpired && !(challengerDone && challengedDone)) return duel
+  // 먼저 모두 풀면 즉시 종료
+  if (challengerDone) {
+    await finalizeDuel(duelId, duel.challengerId, challengerCorrect, challengedCorrect)
+    return await prisma.duel.findUnique({ where: { id: duelId }, include: { submissions: true } })
+  }
+  if (challengedDone) {
+    await finalizeDuel(duelId, duel.challengedId, challengerCorrect, challengedCorrect)
+    return await prisma.duel.findUnique({ where: { id: duelId }, include: { submissions: true } })
+  }
 
-  // Finalize
-  let winnerId: string | null = null
-  if (challengerCorrect > challengedCorrect) winnerId = duel.challengerId
-  else if (challengedCorrect > challengerCorrect) winnerId = duel.challengedId
-  // else draw
+  // 시간 초과
+  if (timeExpired) {
+    const winnerId =
+      challengerCorrect > challengedCorrect ? duel.challengerId :
+      challengedCorrect > challengerCorrect ? duel.challengedId : null
+    await finalizeDuel(duelId, winnerId, challengerCorrect, challengedCorrect)
+    return await prisma.duel.findUnique({ where: { id: duelId }, include: { submissions: true } })
+  }
 
-  await prisma.duel.update({
-    where: { id: duelId },
-    data: {
-      status: 'FINISHED',
-      endedAt: now,
-      challengerScore: challengerCorrect,
-      challengedScore: challengedCorrect,
-      winnerId,
-      winnerDeclared: true,
-    },
-  })
-
-  const notifFor = (myId: string) => ({
-    title: !winnerId ? '대결 무승부' : winnerId === myId ? '대결 승리! 🎉' : '대결 패배',
-    content: !winnerId
-      ? `대결이 무승부로 종료되었습니다.`
-      : winnerId === myId
-        ? `대결에서 승리했습니다! 🎉`
-        : `대결에서 패배했습니다.`,
-  })
-
-  await Promise.all([
-    prisma.notification.create({
-      data: {
-        userId: duel.challengerId,
-        type: 'DUEL_RESULT',
-        ...notifFor(duel.challengerId),
-        link: `/problems/randb/${duelId}`,
-      },
-    }),
-    prisma.notification.create({
-      data: {
-        userId: duel.challengedId,
-        type: 'DUEL_RESULT',
-        ...notifFor(duel.challengedId),
-        link: `/problems/randb/${duelId}`,
-      },
-    }),
-  ])
-
-  return await prisma.duel.findUnique({ where: { id: duelId }, include: { submissions: true } })
+  return duel
 }
 
 export async function GET(_: NextRequest, { params }: { params: { id: string } }) {
@@ -104,7 +106,6 @@ export async function GET(_: NextRequest, { params }: { params: { id: string } }
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
   }
 
-  // Get problem details if ACTIVE or FINISHED
   let problems: unknown[] = []
   if (duel.status === 'ACTIVE' || duel.status === 'FINISHED') {
     const problemIds: string[] = JSON.parse(duel.problems)
@@ -120,18 +121,12 @@ export async function GET(_: NextRequest, { params }: { params: { id: string } }
         imageUrls: true,
       },
     })
-    problems = problemIds.map((pid) => probs.find((p) => p.id === pid)).filter(Boolean)
+    problems = problemIds.map(pid => probs.find(p => p.id === pid)).filter(Boolean)
   }
 
   const [challenger, challenged] = await Promise.all([
-    prisma.user.findUnique({
-      where: { id: duel.challengerId },
-      select: { id: true, name: true, image: true, points: true },
-    }),
-    prisma.user.findUnique({
-      where: { id: duel.challengedId },
-      select: { id: true, name: true, image: true, points: true },
-    }),
+    prisma.user.findUnique({ where: { id: duel.challengerId }, select: { id: true, name: true, image: true, points: true } }),
+    prisma.user.findUnique({ where: { id: duel.challengedId }, select: { id: true, name: true, image: true, points: true } }),
   ])
 
   return NextResponse.json({ ...duel, problems, challenger, challenged })
@@ -150,50 +145,54 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
   // ── Accept ──
   if (action === 'accept') {
     if (duel.challengedId !== userId) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
-    if (duel.status !== 'PENDING')
-      return NextResponse.json({ error: '수락할 수 없는 대결입니다' }, { status: 400 })
+    if (duel.status !== 'PENDING') return NextResponse.json({ error: '수락할 수 없는 대결입니다' }, { status: 400 })
 
     const difficulties: string[] = JSON.parse(duel.difficulties)
     const excludedSubjects: string[] = JSON.parse(duel.excludedSubjects)
+    const tierRanges = difficulties.map(d => DUEL_TIERS[d]).filter(Boolean)
+    if (!tierRanges.length) return NextResponse.json({ error: '유효한 난이도가 없습니다' }, { status: 400 })
 
-    const tierRanges = difficulties.map((d) => DUEL_TIERS[d]).filter(Boolean)
-    if (!tierRanges.length)
-      return NextResponse.json({ error: '유효한 난이도가 없습니다' }, { status: 400 })
-
-    const orConditions = tierRanges.map((r) => ({
-      approvedPts: { gte: r.min, lte: r.max },
-    }))
+    // 제외할 문제 ID 목록 구성
+    const excludedProblemIds: string[] = []
+    if (!duel.allowSolved) {
+      const [solvedChallenger, solvedChallenged] = await Promise.all([
+        prisma.problemSubmission.findMany({ where: { userId: duel.challengerId, correct: true }, select: { problemId: true } }),
+        prisma.problemSubmission.findMany({ where: { userId: duel.challengedId, correct: true }, select: { problemId: true } }),
+      ])
+      const solvedSet = new Set([
+        ...solvedChallenger.map(s => s.problemId),
+        ...solvedChallenged.map(s => s.problemId),
+      ])
+      excludedProblemIds.push(...solvedSet)
+    }
 
     const eligible = await prisma.problem.findMany({
       where: {
         status: 'APPROVED',
         isEssay: false,
-        NOT: { answer: { in: ['[multi-part]', '[essay]'] } },
-        OR: orConditions,
-        ...(excludedSubjects.length > 0 ? { NOT: { subject: { in: excludedSubjects } } } : {}),
+        OR: tierRanges.map(r => ({ approvedPts: { gte: r.min, lte: r.max } })),
+        NOT: [
+          { answer: { in: ['[multi-part]', '[essay]'] } },
+          ...(excludedSubjects.length > 0 ? [{ subject: { in: excludedSubjects } }] : []),
+          ...(excludedProblemIds.length > 0 ? [{ id: { in: excludedProblemIds } }] : []),
+        ],
       },
       select: { id: true },
     })
 
     if (eligible.length < duel.problemCount) {
+      const reason = !duel.allowSolved ? '(이미 푼 문제 제외 후 ' : '('
       return NextResponse.json(
-        {
-          error: `조건에 맞는 문제가 부족합니다 (현재 ${eligible.length}개, 필요 ${duel.problemCount}개). 난이도나 문제 수를 조정해주세요`,
-        },
+        { error: `조건에 맞는 문제가 부족합니다 ${reason}현재 ${eligible.length}개, 필요 ${duel.problemCount}개). 난이도나 문제 수를 조정해주세요` },
         { status: 400 },
       )
     }
 
     const shuffled = [...eligible].sort(() => Math.random() - 0.5).slice(0, duel.problemCount)
-    const problemIds = shuffled.map((p) => p.id)
 
     await prisma.duel.update({
       where: { id: params.id },
-      data: {
-        status: 'ACTIVE',
-        problems: JSON.stringify(problemIds),
-        startedAt: new Date(),
-      },
+      data: { status: 'ACTIVE', problems: JSON.stringify(shuffled.map(p => p.id)), startedAt: new Date() },
     })
 
     await prisma.notification.create({
@@ -205,18 +204,15 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
         link: `/problems/randb/${params.id}`,
       },
     })
-
     return NextResponse.json({ ok: true, duelId: params.id })
   }
 
   // ── Decline ──
   if (action === 'decline') {
     if (duel.challengedId !== userId) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
-    if (duel.status !== 'PENDING')
-      return NextResponse.json({ error: '처리할 수 없는 대결입니다' }, { status: 400 })
+    if (duel.status !== 'PENDING') return NextResponse.json({ error: '처리할 수 없는 대결입니다' }, { status: 400 })
 
     await prisma.duel.update({ where: { id: params.id }, data: { status: 'DECLINED' } })
-
     await prisma.notification.create({
       data: {
         userId: duel.challengerId,
@@ -226,17 +222,41 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
         link: '/problems/randb',
       },
     })
-
     return NextResponse.json({ ok: true })
   }
 
-  // ── Cancel (challenger cancels pending) ──
+  // ── Cancel ──
   if (action === 'cancel') {
     if (duel.challengerId !== userId) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
-    if (duel.status !== 'PENDING')
-      return NextResponse.json({ error: '취소할 수 없는 대결입니다' }, { status: 400 })
-
+    if (duel.status !== 'PENDING') return NextResponse.json({ error: '취소할 수 없는 대결입니다' }, { status: 400 })
     await prisma.duel.update({ where: { id: params.id }, data: { status: 'DECLINED' } })
+    return NextResponse.json({ ok: true })
+  }
+
+  // ── Forfeit (나가면 실격패) ──
+  if (action === 'forfeit') {
+    if (duel.challengerId !== userId && duel.challengedId !== userId)
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+    if (duel.status !== 'ACTIVE' || duel.winnerDeclared)
+      return NextResponse.json({ ok: true }) // 이미 종료됨
+
+    const winnerId = userId === duel.challengerId ? duel.challengedId : duel.challengerId
+    const subs = await prisma.duelSubmission.findMany({ where: { duelId: params.id } })
+    const cScore = subs.filter(s => s.userId === duel.challengerId && s.correct).length
+    const dScore = subs.filter(s => s.userId === duel.challengedId && s.correct).length
+
+    await finalizeDuel(params.id, winnerId, cScore, dScore)
+
+    // 실격 알림
+    await prisma.notification.create({
+      data: {
+        userId: winnerId,
+        type: 'DUEL_RESULT',
+        title: '대결 승리! 🎉 (상대 실격)',
+        content: '상대방이 대결 도중 이탈하여 승리했습니다.',
+        link: `/problems/randb/${params.id}`,
+      },
+    })
     return NextResponse.json({ ok: true })
   }
 

@@ -191,6 +191,7 @@ export default function RandBPage() {
   const [excludedSubjects, setExcludedSubjects] = useState<string[]>([])
   const [problemCount, setProblemCount] = useState(10)
   const [timeLimit, setTimeLimit] = useState(600)
+  const [allowSolved, setAllowSolved] = useState(true)
   const [creating, setCreating] = useState(false)
 
   const loadDuels = useCallback(async () => {
@@ -220,6 +221,7 @@ export default function RandBPage() {
           difficulties: selectedDifficulties,
           problemCount,
           timeLimit,
+          allowSolved,
         }),
       })
       if (res.ok) {
@@ -415,6 +417,36 @@ export default function RandBPage() {
                 </button>
               ))}
             </div>
+          </div>
+
+          {/* Allow solved */}
+          <div>
+            <label className="text-xs text-text-secondary mb-2 block">문제 풀이 기준</label>
+            <div className="flex gap-2">
+              <button
+                onClick={() => setAllowSolved(true)}
+                className={cn(
+                  'px-3 py-1.5 rounded-lg text-xs font-medium border transition-colors',
+                  allowSolved ? 'bg-accent text-background border-accent' : 'border-border text-text-secondary hover:border-accent/50',
+                )}
+              >
+                🔓 푼 문제 포함
+              </button>
+              <button
+                onClick={() => setAllowSolved(false)}
+                className={cn(
+                  'px-3 py-1.5 rounded-lg text-xs font-medium border transition-colors',
+                  !allowSolved ? 'bg-accent text-background border-accent' : 'border-border text-text-secondary hover:border-accent/50',
+                )}
+              >
+                🔒 안 푼 문제만
+              </button>
+            </div>
+            {!allowSolved && (
+              <p className="text-[10px] text-text-secondary mt-1.5">
+                양쪽 모두 아직 못 푼 문제만 출제됩니다. 조건에 맞는 문제가 부족하면 대결이 거절될 수 있습니다.
+              </p>
+            )}
           </div>
 
           <div className="flex gap-2 pt-1">

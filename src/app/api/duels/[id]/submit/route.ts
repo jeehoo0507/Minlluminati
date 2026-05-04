@@ -64,46 +64,25 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
     update: { correct },
   })
 
-  // Check if both players finished all problems → finalize
+  // 먼저 모든 문제를 맞추면 즉시 대결 종료 (내가 이김)
   if (correct) {
-    const allSubs = await prisma.duelSubmission.findMany({
-      where: { duelId: params.id },
-    })
-    const challengerDone = problemIds.every((pid) =>
-      allSubs.some((s) => s.userId === duel.challengerId && s.problemId === pid && s.correct),
+    const allSubs = await prisma.duelSubmission.findMany({ where: { duelId: params.id } })
+    const myDone = problemIds.every(pid =>
+      allSubs.some(s => s.userId === userId && s.problemId === pid && s.correct),
     )
-    const challengedDone = problemIds.every((pid) =>
-      allSubs.some((s) => s.userId === duel.challengedId && s.problemId === pid && s.correct),
-    )
-
-    if (challengerDone && challengedDone) {
-      const challengerScore = allSubs.filter(
-        (s) => s.userId === duel.challengerId && s.correct,
-      ).length
-      const challengedScore = allSubs.filter(
-        (s) => s.userId === duel.challengedId && s.correct,
-      ).length
-      const winnerId =
-        challengerScore > challengedScore
-          ? duel.challengerId
-          : challengedScore > challengerScore
-            ? duel.challengedId
-            : null
-
-      if (!duel.winnerDeclared) {
-        await prisma.duel.update({
-          where: { id: params.id },
-          data: {
-            status: 'FINISHED',
-            endedAt: new Date(),
-            challengerScore,
-            challengedScore,
-            winnerId,
-            winnerDeclared: true,
-          },
-        })
-      }
-      return NextResponse.json({ correct, finished: true, winnerId })
+    if (myDone && !duel.winnerDeclared) {
+      const cScore = allSubs.filter(s => s.userId === duel.challengerId && s.correct).length
+      const dScore = allSubs.filter(s => s.userId === duel.challengedId && s.correct).length
+      await prisma.duel.update({
+        where: { id: params.id },
+        data: { status: 'FINISHED', endedAt: new Date(), challengerScore: cScore, challengedScore: dScore, winnerId: userId, winnerDeclared: true },
+      })
+      // 알림
+      const opponentId = userId === duel.challengerId ? duel.challengedId : duel.challengerId
+      await prisma.notification.create({
+        data: { userId: opponentId, type: 'DUEL_RESULT', title: '대결 패배', content: '상대방이 모든 문제를 먼저 풀었습니다.', link: `/problems/randb/${params.id}` },
+      })
+      return NextResponse.json({ correct, finished: true, winnerId: userId })
     }
   }
 

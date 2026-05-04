@@ -159,7 +159,7 @@ export default function ProblemsPage() {
         onClick={() => setSidebarOpen(false)}
       >
         <Swords size={15} />
-        randB 대결
+        대결
       </Link>
 
       <div className="pt-4">

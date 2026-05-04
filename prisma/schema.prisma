@@ -825,6 +825,7 @@ model Duel {
   difficulties     String  @default("[]") // JSON array of tier names
   problemCount     Int     @default(10)
   timeLimit        Int     @default(600)  // seconds
+  allowSolved      Boolean @default(true) // 이미 푼 문제 포함 여부
 
   // Problems assigned on accept (JSON array of problem IDs)
   problems         String  @default("[]")

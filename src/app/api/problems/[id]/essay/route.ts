@@ -90,8 +90,8 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
       create: { problemId: params.id, userId: sub.userId, answer: '[essay-approved]', correct: true },
       update: { correct: true, answer: '[essay-approved]' },
     })
-    // Award points if problem has approvedPts
-    if (problem.approvedPts && problem.approvedPts > 0) {
+    // Award points (자기 문제 자기 제출 승인은 포인트 미지급)
+    if (problem.approvedPts && problem.approvedPts > 0 && sub.userId !== problem.authorId) {
       await prisma.user.update({ where: { id: sub.userId }, data: { points: { increment: problem.approvedPts } } })
       await prisma.pointHistory.create({
         data: { userId: sub.userId, delta: problem.approvedPts, reason: `서술형 정답 승인: ${problem.title}`, subject: problem.subject ?? undefined },

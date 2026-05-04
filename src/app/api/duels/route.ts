@@ -31,7 +31,7 @@ export async function POST(req: NextRequest) {
   const session = await getAuth()
   if (!session?.user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
-  const { targetName, excludedSubjects, difficulties, problemCount, timeLimit } = await req.json()
+  const { targetName, excludedSubjects, difficulties, problemCount, timeLimit, allowSolved } = await req.json()
 
   if (!targetName?.trim()) return NextResponse.json({ error: '상대방 닉네임을 입력하세요' }, { status: 400 })
   if (!difficulties?.length) return NextResponse.json({ error: '난이도를 선택하세요' }, { status: 400 })
@@ -65,6 +65,7 @@ export async function POST(req: NextRequest) {
       difficulties: JSON.stringify(difficulties),
       problemCount,
       timeLimit,
+      allowSolved: allowSolved !== false,
     },
     include: {
       challenger: { select: { id: true, name: true, image: true, points: true } },
