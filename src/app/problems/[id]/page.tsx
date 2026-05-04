@@ -146,7 +146,7 @@ export default function ProblemDetailPage() {
     if (res.ok) {
       const data = await res.json()
       setProblem(data)
-      setAdminPts(data.approvedPts != null ? String(data.approvedPts) : '')
+      setAdminPts(data.approvedPts != null ? String(data.approvedPts) : (data.requestedPts ? String(data.requestedPts) : ''))
     } else {
       router.push('/problems')
     }

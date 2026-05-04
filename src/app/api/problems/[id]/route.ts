@@ -87,7 +87,7 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
 
   // Status change (admin action)
   if (isAdmin && status && status !== problem.status) {
-    const effectivePts = approvedPts ?? problem.approvedPts ?? 0
+    const effectivePts = approvedPts ?? problem.approvedPts ?? problem.requestedPts ?? 0
     const isApproved = status === 'APPROVED'
 
     // 상점 포인트: 문제 승인 시 출제자에게 지급 (소유자 포함 모두. 단 이미 승인→재승인 방지)
