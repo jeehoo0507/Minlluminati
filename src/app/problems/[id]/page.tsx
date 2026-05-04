@@ -559,12 +559,12 @@ export default function ProblemDetailPage() {
         </div>
 
         {/* Author */}
-        <div className="flex items-center gap-2 pb-4 border-b border-border">
+        <div className="flex items-center gap-2 pb-4 border-b border-border flex-wrap">
           <Avatar name={problem.author.name} image={problem.author.image} size={28} />
           <span className="text-sm text-text-primary">{problem.author.name}</span>
           <TierBadge points={problem.author.points} />
           <span className="text-xs text-muted">{timeAgo(problem.createdAt)}</span>
-          <div className="ml-auto flex items-center gap-3 text-xs text-muted">
+          <div className="ml-auto flex items-center gap-3 text-xs text-muted shrink-0">
             <span className="flex items-center gap-1"><Users size={11} />{problem._count.submissions}명 도전</span>
             <span className="flex items-center gap-1"><CheckCircle2 size={11} />{problem.solveRate}% 정답</span>
           </div>
@@ -616,22 +616,24 @@ export default function ProblemDetailPage() {
           )}
         </div>
 
-        {/* Tabs */}
-        <div className="flex gap-1 border-b border-border pb-0">
-          {TABS.map(({ key, label }) => (
-            <button
-              key={key}
-              onClick={() => setActiveTab(key)}
-              className={cn(
-                'px-3 py-1.5 text-sm font-medium rounded-t-lg transition-colors border-b-2 -mb-px',
-                activeTab === key
-                  ? 'text-accent border-accent bg-accent/5'
-                  : 'text-text-secondary border-transparent hover:text-text-primary'
-              )}
-            >
-              {label}
-            </button>
-          ))}
+        {/* Tabs — 모바일에서 가로 스크롤 */}
+        <div className="overflow-x-auto scrollbar-none -mx-6 px-6">
+          <div className="flex gap-1 border-b border-border min-w-max">
+            {TABS.map(({ key, label }) => (
+              <button
+                key={key}
+                onClick={() => setActiveTab(key)}
+                className={cn(
+                  'px-3 py-2 text-sm font-medium rounded-t-lg transition-colors border-b-2 -mb-px whitespace-nowrap',
+                  activeTab === key
+                    ? 'text-accent border-accent bg-accent/5'
+                    : 'text-text-secondary border-transparent hover:text-text-primary'
+                )}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
         </div>
 
         {/* ===== 문제 tab ===== */}

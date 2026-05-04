@@ -227,56 +227,72 @@ export default function ProblemsPage() {
         </div>
 
         {/* Search */}
-        <div className="flex items-center gap-2 flex-wrap">
-          <button
-            onClick={() => setSidebarOpen(true)}
-            className="lg:hidden flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-border text-sm text-text-secondary hover:text-text-primary hover:bg-surface-2 transition-colors"
-          >
-            <Menu size={15} /> 필터
-          </button>
-          <form onSubmit={handleSearch} className="flex-1 flex gap-2 flex-wrap">
-            <div className="relative flex-1 min-w-36">
-              <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted" />
-              <input
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-                placeholder="#번호 또는 제목·내용 검색..."
-                className="w-full bg-surface border border-border rounded-lg pl-9 pr-3 py-2 text-sm text-text-primary placeholder:text-muted focus:outline-none focus:border-accent"
-              />
-            </div>
-            <div className="relative min-w-28">
-              <User size={13} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted" />
+        <div className="space-y-2">
+          {/* Row 1: 필터 버튼 + 검색 + 출제자 */}
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => setSidebarOpen(true)}
+              className="lg:hidden shrink-0 flex items-center gap-1.5 px-3 py-2 rounded-lg border border-border text-sm text-text-secondary hover:text-text-primary hover:bg-surface-2 transition-colors"
+            >
+              <Menu size={15} /> 필터
+            </button>
+            <form onSubmit={handleSearch} className="flex-1 flex gap-2 min-w-0">
+              <div className="relative flex-1 min-w-0">
+                <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted pointer-events-none" />
+                <input
+                  value={search}
+                  onChange={(e) => setSearch(e.target.value)}
+                  placeholder="#번호 또는 제목 검색..."
+                  className="w-full bg-surface border border-border rounded-lg pl-9 pr-3 py-2 text-sm text-text-primary placeholder:text-muted focus:outline-none focus:border-accent"
+                />
+              </div>
+              <div className="relative hidden sm:block w-32 shrink-0">
+                <User size={13} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted pointer-events-none" />
+                <input
+                  value={authorSearch}
+                  onChange={(e) => setAuthorSearch(e.target.value)}
+                  placeholder="출제자"
+                  className="w-full bg-surface border border-border rounded-lg pl-8 pr-3 py-2 text-sm text-text-primary placeholder:text-muted focus:outline-none focus:border-accent"
+                />
+              </div>
+              <button type="submit" className="shrink-0 px-3 py-2 rounded-lg bg-surface border border-border text-sm text-text-secondary hover:text-text-primary hover:border-border-2 transition-colors">
+                검색
+              </button>
+            </form>
+          </div>
+          {/* Row 2 (모바일): 출제자 검색 + 정렬 select */}
+          <div className="flex items-center gap-2 sm:justify-end">
+            <div className="relative flex-1 sm:hidden">
+              <User size={13} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted pointer-events-none" />
               <input
                 value={authorSearch}
                 onChange={(e) => setAuthorSearch(e.target.value)}
+                onKeyDown={(e) => { if (e.key === 'Enter') { setPage(1); setAuthorQuery(authorSearch) } }}
                 placeholder="출제자 검색"
                 className="w-full bg-surface border border-border rounded-lg pl-8 pr-3 py-2 text-sm text-text-primary placeholder:text-muted focus:outline-none focus:border-accent"
               />
             </div>
-            <button type="submit" className="px-3 py-2 rounded-lg bg-surface border border-border text-sm text-text-secondary hover:text-text-primary hover:border-border-2 transition-colors">
-              검색
-            </button>
-          </form>
-          {/* Sort + Solved filter — 하나의 select */}
-          <div className="flex items-center gap-1 border border-border rounded-lg overflow-hidden text-xs">
-            <SortAsc size={13} className="ml-2 text-muted shrink-0" />
-            <select
-              value={`${sort}:${solvedFilter}`}
-              onChange={(e) => {
-                const [newSort, newFilter] = e.target.value.split(':')
-                handleSortAndFilter(newSort, newFilter as 'all' | 'solved' | 'unsolved')
-              }}
-              className="bg-surface text-text-secondary py-2 pl-1 pr-2 focus:outline-none text-xs"
-            >
-              <option value="number_desc:all">번호 내림차순</option>
-              <option value="number_asc:all">번호 오름차순</option>
-              {session?.user && (
-                <>
-                  <option value="number_desc:unsolved">안 푼 문제</option>
-                  <option value="number_desc:solved">푼 문제</option>
-                </>
-              )}
-            </select>
+            {/* Sort + Solved filter */}
+            <div className="flex items-center gap-1 border border-border rounded-lg overflow-hidden text-xs shrink-0">
+              <SortAsc size={13} className="ml-2 text-muted shrink-0" />
+              <select
+                value={`${sort}:${solvedFilter}`}
+                onChange={(e) => {
+                  const [newSort, newFilter] = e.target.value.split(':')
+                  handleSortAndFilter(newSort, newFilter as 'all' | 'solved' | 'unsolved')
+                }}
+                className="bg-surface text-text-secondary py-2 pl-1 pr-2 focus:outline-none text-xs"
+              >
+                <option value="number_desc:all">번호 내림차순</option>
+                <option value="number_asc:all">번호 오름차순</option>
+                {session?.user && (
+                  <>
+                    <option value="number_desc:unsolved">안 푼 문제</option>
+                    <option value="number_desc:solved">푼 문제</option>
+                  </>
+                )}
+              </select>
+            </div>
           </div>
         </div>
 
@@ -377,13 +393,14 @@ export default function ProblemsPage() {
 
                   {/* Stats */}
                   <div className="shrink-0 text-right space-y-1">
-                    <div className="flex items-center gap-1 justify-end">
+                    {/* 모바일에선 제출자 수 숨김 */}
+                    <div className="hidden sm:flex items-center gap-1 justify-end">
                       <BarChart2 size={12} className="text-muted" />
                       <span className="text-xs text-muted">{p._count.submissions}명 도전</span>
                     </div>
                     <div className="flex items-center gap-1 justify-end">
                       <CheckCircle2 size={12} className={p.solveRate >= 50 ? 'text-green-500' : 'text-orange-400'} />
-                      <span className="text-xs text-muted">{p.solveRate}% 정답</span>
+                      <span className="text-xs text-muted">{p.solveRate}%</span>
                     </div>
                     {p.approvedPts != null && p.approvedPts > 0 && (
                       <div className="flex items-center gap-1 justify-end">
@@ -394,7 +411,7 @@ export default function ProblemsPage() {
                     {p.status === 'PENDING' && p.requestedPts > 0 && (
                       <div className="flex items-center gap-1 justify-end">
                         <Clock size={11} className="text-muted" />
-                        <span className="text-xs text-muted">{p.requestedPts}pt 요청</span>
+                        <span className="text-xs text-muted">{p.requestedPts}pt</span>
                       </div>
                     )}
                   </div>

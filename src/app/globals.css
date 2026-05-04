@@ -53,6 +53,11 @@
 
 * { box-sizing: border-box; }
 
+html {
+  /* 모바일 가로 스크롤 방지 */
+  overflow-x: hidden;
+}
+
 body {
   background-color: var(--color-bg);
   color: var(--color-text-primary);
@@ -60,12 +65,47 @@ body {
   -webkit-font-smoothing: antialiased;
   word-break: keep-all;
   overflow-wrap: break-word;
+  overflow-x: hidden;
+  /* 부드러운 스크롤 */
+  scroll-behavior: smooth;
+}
+
+/* 버튼 탭 딜레이 제거 (모바일) */
+button, a, [role="button"] {
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
 }
 
 ::-webkit-scrollbar { width: 6px; height: 6px; }
 ::-webkit-scrollbar-track { background: transparent; }
 ::-webkit-scrollbar-thumb { background: var(--color-border-2); border-radius: 3px; }
 ::-webkit-scrollbar-thumb:hover { background: var(--color-muted); }
+
+/* ─── iOS Safari 입력 줌 방지 ─── */
+/* iOS Safari는 font-size < 16px 인 input에서 자동 줌. */
+/* 모바일에서 16px로 설정하되 시각적 크기는 유지. */
+@media screen and (max-width: 768px) {
+  input[type="text"],
+  input[type="email"],
+  input[type="password"],
+  input[type="number"],
+  input[type="search"],
+  input[type="tel"],
+  input[type="url"],
+  textarea,
+  select {
+    font-size: 16px;
+  }
+}
+
+/* 수평 스크롤 가능한 탭/섹션의 스크롤바 숨기기 */
+.scrollbar-none {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+.scrollbar-none::-webkit-scrollbar {
+  display: none;
+}
 
 .katex-display { overflow-x: auto; overflow-y: hidden; padding: 0.5rem 0; }
 

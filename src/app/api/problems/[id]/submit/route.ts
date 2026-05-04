@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/db'
 import { getAuth } from '@/lib/auth'
 import { checkSolveBadges, awardBadge } from '@/lib/awardBadge'
+import { checkRateLimit } from '@/lib/rateLimit'
 
 export const dynamic = 'force-dynamic'
 
@@ -20,13 +21,28 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
   const session = await getAuth()
   if (!session?.user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
+  // Rate limiting: 유저+문제 조합당 5분에 30회 (브루트포스 방지)
+  const rlKey = `submit:${session.user.id}:${params.id}`
+  if (!checkRateLimit(rlKey, 30, 5 * 60 * 1000)) {
+    return NextResponse.json(
+      { error: '제출 횟수를 초과했습니다. 잠시 후 다시 시도해주세요' },
+      { status: 429 }
+    )
+  }
+
   const problem = await prisma.problem.findUnique({ where: { id: params.id } })
   if (!problem) return NextResponse.json({ error: 'Not found' }, { status: 404 })
   if (problem.status !== 'APPROVED') {
     return NextResponse.json({ error: '승인된 문제가 아닙니다' }, { status: 400 })
   }
 
-  const { answer, parts } = await req.json()
+  let body: { answer?: string; parts?: string[] }
+  try {
+    body = await req.json()
+  } catch {
+    return NextResponse.json({ error: '잘못된 요청입니다' }, { status: 400 })
+  }
+  const { answer, parts } = body
 
   const normalize = (s: string) => s.trim().toLowerCase().replace(/\s+/g, '')
 

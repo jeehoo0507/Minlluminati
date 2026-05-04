@@ -96,11 +96,12 @@ export function Header() {
                 <div className="relative">
                   <button
                     onClick={() => { setBellOpen(!bellOpen); if (!bellOpen) loadNotifications() }}
-                    className="relative flex items-center justify-center w-9 h-9 rounded-lg hover:bg-surface-2 transition-colors"
+                    className="relative flex items-center justify-center w-10 h-10 rounded-lg hover:bg-surface-2 transition-colors"
+                    aria-label="알림"
                   >
                     <Bell size={18} className="text-text-secondary" />
                     {unread > 0 && (
-                      <span className="absolute top-1 right-1 w-4 h-4 bg-red-500 text-white text-[10px] font-bold rounded-full flex items-center justify-center">
+                      <span className="absolute top-1 right-1 min-w-[16px] h-4 px-0.5 bg-red-500 text-white text-[10px] font-bold rounded-full flex items-center justify-center">
                         {unread > 9 ? '9+' : unread}
                       </span>
                     )}
@@ -108,26 +109,26 @@ export function Header() {
                   {bellOpen && (
                     <>
                       <div className="fixed inset-0 z-10" onClick={() => setBellOpen(false)} />
-                      <div className="fixed top-14 right-2 w-80 max-w-[calc(100vw-1rem)] md:absolute md:top-full md:right-0 md:mt-1 md:max-w-none bg-surface border border-border rounded-xl shadow-2xl z-20 overflow-hidden animate-fade-in">
-                        <div className="flex items-center justify-between px-3 py-2.5 border-b border-border">
+                      <div className="fixed top-14 right-2 w-[320px] max-w-[calc(100vw-1rem)] md:absolute md:top-full md:right-0 md:mt-1 md:max-w-none bg-surface border border-border rounded-xl shadow-2xl z-20 overflow-hidden animate-fade-in">
+                        <div className="flex items-center justify-between px-4 py-3 border-b border-border">
                           <span className="text-sm font-semibold text-text-primary">알림</span>
-                          {unread > 0 && <button onClick={markAllRead} className="text-xs text-accent hover:underline">모두 읽음</button>}
+                          {unread > 0 && <button onClick={markAllRead} className="text-xs text-accent hover:underline py-1 px-2 -mr-2">모두 읽음</button>}
                         </div>
-                        <div className="overflow-y-auto max-h-80">
+                        <div className="overflow-y-auto max-h-[70vh] md:max-h-80">
                           {notifications.length === 0 ? (
-                            <div className="text-center py-8 text-text-secondary text-sm">알림이 없습니다</div>
+                            <div className="text-center py-10 text-text-secondary text-sm">알림이 없습니다</div>
                           ) : (
                             notifications.map((n) => (
                               <button
                                 key={n.id}
                                 onClick={() => markRead(n.id, n.link)}
-                                className={`w-full text-left px-4 py-3 border-b border-border last:border-0 hover:bg-surface-2 transition-colors ${!n.read ? 'bg-accent/5' : ''}`}
+                                className={`w-full text-left px-4 py-3.5 border-b border-border last:border-0 hover:bg-surface-2 active:bg-surface-2 transition-colors ${!n.read ? 'bg-accent/5' : ''}`}
                               >
-                                <div className="flex items-start gap-2">
-                                  {!n.read && <span className="w-1.5 h-1.5 rounded-full bg-accent mt-1.5 shrink-0" />}
-                                  <div className={!n.read ? '' : 'pl-3.5'}>
-                                    <p className="text-xs font-semibold text-text-primary">{n.title}</p>
-                                    <p className="text-xs text-text-secondary mt-0.5 line-clamp-2">{n.content}</p>
+                                <div className="flex items-start gap-2.5">
+                                  {!n.read && <span className="w-2 h-2 rounded-full bg-accent mt-1 shrink-0" />}
+                                  <div className={!n.read ? '' : 'pl-[18px]'}>
+                                    <p className="text-xs font-semibold text-text-primary leading-snug">{n.title}</p>
+                                    <p className="text-xs text-text-secondary mt-0.5 line-clamp-2 leading-relaxed">{n.content}</p>
                                   </div>
                                 </div>
                               </button>
@@ -197,7 +198,7 @@ export function Header() {
             {/* Mobile hamburger */}
             <button
               onClick={() => setMobileOpen(true)}
-              className="md:hidden flex items-center justify-center w-9 h-9 rounded-lg hover:bg-surface-2 transition-colors"
+              className="md:hidden flex items-center justify-center w-10 h-10 rounded-lg hover:bg-surface-2 transition-colors"
               aria-label="메뉴 열기"
             >
               <Menu size={20} className="text-text-primary" />
@@ -223,14 +224,14 @@ export function Header() {
             </div>
 
             {/* Nav links */}
-            <nav className="flex-1 overflow-y-auto p-3 space-y-1">
+            <nav className="flex-1 overflow-y-auto p-3 space-y-0.5">
               {NAV_ITEMS.map(({ href, label }) => (
                 <Link
                   key={href}
                   href={href}
                   onClick={() => setMobileOpen(false)}
                   className={cn(
-                    'flex items-center px-3 py-2.5 rounded-lg text-sm font-medium transition-colors',
+                    'flex items-center px-3 py-3 rounded-lg text-sm font-medium transition-colors',
                     pathname.startsWith(href)
                       ? 'text-accent bg-accent/10'
                       : 'text-text-secondary hover:text-text-primary hover:bg-surface-2'

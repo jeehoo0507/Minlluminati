@@ -52,16 +52,16 @@ export default function LeaderboardPage() {
       </div>
 
       {/* Tier guide */}
-      <div className="grid grid-cols-3 sm:grid-cols-7 gap-2">
+      <div className="grid grid-cols-4 sm:grid-cols-7 gap-2">
         {TIERS.map((t) => {
           const isRuby = t.name === '루비'
           return (
             <div key={t.name} className="text-center p-2 border border-border rounded-lg" style={{ background: t.bg }}>
               <div className="text-xs font-semibold mt-0.5" style={{ color: t.color }}>{t.name}</div>
-              <div className="text-xs text-muted">{t.max === Infinity ? `${t.min}+` : `${t.min}~${t.max}`}pt</div>
+              <div className="text-[11px] text-muted">{t.max === Infinity ? `${t.min}+` : `${t.min}~`}pt</div>
               {isRuby && (
-                <div className="text-[10px] font-semibold mt-0.5" style={{ color: MASTER_TIER.color }}>
-                  top{MASTER_COUNT} → {MASTER_TIER.name}
+                <div className="text-[10px] font-semibold mt-0.5 hidden sm:block" style={{ color: MASTER_TIER.color }}>
+                  top{MASTER_COUNT}→{MASTER_TIER.name}
                 </div>
               )}
             </div>
@@ -112,13 +112,13 @@ export default function LeaderboardPage() {
                 <Avatar name={user.name} image={user.image} size={32} />
 
                 <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-1.5 flex-wrap">
                     <span className="text-sm font-medium text-text-primary truncate">{user.name ?? '?'}</span>
                     {isMe && <span className="text-xs text-accent">(나)</span>}
                     <TierBadge points={user.points} isMaster={user.isMaster} />
                   </div>
                   <div className="flex items-center gap-3 mt-0.5">
-                    <span className="flex items-center gap-1 text-xs text-muted">
+                    <span className="hidden sm:flex items-center gap-1 text-xs text-muted">
                       <FileText size={11} />
                       {user._count.posts}개 작성
                     </span>
@@ -126,7 +126,10 @@ export default function LeaderboardPage() {
                 </div>
 
                 <div className="text-right shrink-0">
-                  <div className="text-sm font-bold text-accent">{user.points}pt</div>
+                  <div className="text-sm font-bold text-accent">{user.points.toLocaleString()}pt</div>
+                  <div className="flex sm:hidden items-center gap-1 justify-end mt-0.5 text-xs text-muted">
+                    <FileText size={10} />{user._count.posts}
+                  </div>
                 </div>
               </Link>
             )
