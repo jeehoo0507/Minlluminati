@@ -1483,6 +1483,25 @@ export default function AdminPage() {
       {tab === 'badges' && (
         <div className="space-y-5" ref={(el) => { if (el && adminBadges.length === 0) loadAdminBadges() }}>
           <input ref={badgeImgRef} type="file" accept="image/*" className="hidden" onChange={handleBadgeImageUpload} />
+
+          {/* 소급 지급 */}
+          <div className="bg-surface border border-border rounded-2xl p-5 flex items-center justify-between gap-4">
+            <div>
+              <p className="text-sm font-semibold text-text-primary">기존 유저 뱃지 소급 지급</p>
+              <p className="text-xs text-muted mt-0.5">문제 풀기·출제·피드 글 기준으로 조건을 충족한 유저에게 누락된 뱃지를 일괄 지급합니다.</p>
+            </div>
+            <button
+              onClick={async () => {
+                const res = await fetch('/api/admin/badges/backfill', { method: 'POST' })
+                const d = await res.json()
+                if (res.ok) toast.success(`완료: ${d.users}명 검토, ${d.awarded}개 지급`)
+                else toast.error('오류 발생')
+              }}
+              className="shrink-0 px-4 py-2 rounded-lg bg-accent text-background text-sm font-semibold hover:bg-accent-dim transition-colors">
+              소급 지급 실행
+            </button>
+          </div>
+
           <div className="bg-surface border border-border rounded-2xl overflow-hidden">
             <div className="px-5 py-4 border-b border-border bg-surface-2 flex items-center justify-between">
               <h3 className="text-sm font-semibold text-text-secondary">뱃지 목록 ({adminBadges.length})</h3>

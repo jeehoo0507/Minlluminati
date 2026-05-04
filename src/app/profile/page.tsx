@@ -317,7 +317,7 @@ export default function ProfilePage() {
           <button onClick={() => { setBadgeOpen((v) => !v); if (!badgeData) loadBadges() }}
             className="flex items-center gap-1.5 text-sm text-text-secondary hover:text-text-primary transition-colors w-full justify-between">
             <span className="flex items-center gap-1.5">
-              🏅 내 뱃지
+              내 뱃지
               {badgeData && <span className="ml-1 text-xs font-semibold text-accent">{badgeData.ownedBadges.length}개 보유</span>}
             </span>
             <span className="text-xs text-muted">{badgeOpen ? '▲' : '▼'}</span>
