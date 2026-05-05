@@ -7,12 +7,12 @@ import { TierBadge } from '@/components/ui/TierBadge'
 import { AdminConfirmModal } from '@/components/ui/AdminConfirmModal'
 import { timeAgo } from '@/lib/utils'
 import Link from 'next/link'
-import { UserPlus, Trash2, Shield, ShieldOff, CheckCircle, XCircle, Swords, Pencil, RotateCcw, Sliders, Bell, ShoppingBag, Plus, X } from 'lucide-react'
+import { UserPlus, Trash2, Shield, ShieldOff, CheckCircle, XCircle, Swords, Pencil, RotateCcw, Sliders, Bell, ShoppingBag, Plus, X, BotOff, Bot } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { TIERS } from '@/lib/scoring'
 
 interface AdminUser {
-  id: string; email: string; name?: string | null; image?: string | null; role: string; points: number; createdAt: string
+  id: string; email: string; name?: string | null; image?: string | null; role: string; points: number; createdAt: string; aiDisabled: boolean
 }
 interface PendingContest {
   id: string; title: string; createdAt: string
@@ -535,6 +535,20 @@ export default function AdminPage() {
       if (res.ok) { toast.success('초대 이메일 등록 완료'); setInviteEmail('') }
       else toast.error(data.error)
     } finally { setLoading(false) }
+  }
+
+  async function toggleAiDisabled(user: AdminUser) {
+    const res = await fetch(`/api/admin/users/${user.id}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ aiDisabled: !user.aiDisabled }),
+    })
+    if (res.ok) {
+      setUsers((prev) => prev.map((u) => u.id === user.id ? { ...u, aiDisabled: !user.aiDisabled } : u))
+      toast.success(!user.aiDisabled ? `${user.name ?? user.email} AI 비활성화됨` : `${user.name ?? user.email} AI 활성화됨`)
+    } else {
+      toast.error('변경 실패')
+    }
   }
 
   async function toggleAdmin(user: AdminUser) {
@@ -1688,6 +1702,17 @@ export default function AdminPage() {
                         <button onClick={() => openEditPoints(user)} title="포인트 수정"
                           className="p-1.5 rounded-lg text-muted hover:text-accent hover:bg-accent/10 transition-colors">
                           <Pencil size={13} />
+                        </button>
+                        <button
+                          onClick={() => toggleAiDisabled(user)}
+                          title={user.aiDisabled ? 'AI 활성화' : 'AI 비활성화'}
+                          className={`p-1.5 rounded-lg transition-colors ${
+                            user.aiDisabled
+                              ? 'text-red-400 bg-red-400/10 hover:text-red-300'
+                              : 'text-muted hover:text-red-400 hover:bg-red-400/10'
+                          }`}
+                        >
+                          {user.aiDisabled ? <BotOff size={14} /> : <Bot size={14} />}
                         </button>
                         {session.user.isOwner && (
                           <button onClick={() => toggleAdmin(user)} title={user.role === 'ADMIN' ? '관리자 해제' : '관리자 설정'}

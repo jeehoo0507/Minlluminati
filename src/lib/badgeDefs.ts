@@ -47,5 +47,6 @@ export const BADGE_DEFS: BadgeDef[] = [
   { key: 'hidden_stalker',     name: '변태',          description: '다른 유저 프로필을 50회 이상 확인했습니다',      title: '변태',         isHidden: true, sortOrder: 902 },
   { key: 'hidden_image_maker', name: '이미지 메이커', description: '프로필 사진을 변경했습니다',                    title: '이미지 메이커', isHidden: true, sortOrder: 903 },
   { key: 'hidden_first_ruby',  name: 'first ruby',    description: '플랫폼 최초로 루비를 달성했습니다',             title: 'first ruby',   isHidden: true, sortOrder: 904 },
-  { key: 'hidden_popular',     name: '주딱',          description: '피드 글에서 하트 10개 이상을 받았습니다',       title: '주딱',         isHidden: true, sortOrder: 905 },
+  { key: 'hidden_popular',          name: '주딱',        description: '피드 글에서 하트 10개 이상을 받았습니다',                      title: '주딱',        isHidden: true, sortOrder: 905 },
+  { key: 'hidden_linear_algebra',   name: '선형대수학자', description: 'Linear algebra 문제집의 모든 문제를 해결했습니다.', title: '선형대수학자', isHidden: true, sortOrder: 906 },
 ]

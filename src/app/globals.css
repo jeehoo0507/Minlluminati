@@ -165,3 +165,47 @@ button, a, [role="button"] {
 .prose-content table { width: 100%; border-collapse: collapse; margin: 1rem 0; font-size: 0.9em; }
 .prose-content th, .prose-content td { border: 1px solid var(--color-border); padding: 0.5rem 0.75rem; text-align: left; }
 .prose-content th { background: var(--color-surface); font-weight: 600; }
+
+/* ─── AI Markdown ─── */
+.ai-markdown { color: var(--color-text-primary); line-height: 1.75; }
+.ai-markdown p { margin: 0.5rem 0; }
+.ai-markdown p:first-child { margin-top: 0; }
+.ai-markdown p:last-child { margin-bottom: 0; }
+.ai-markdown h1, .ai-markdown h2, .ai-markdown h3, .ai-markdown h4 {
+  font-weight: 700; margin: 1rem 0 0.4rem; color: var(--color-text-primary);
+}
+.ai-markdown h1 { font-size: 1.2rem; }
+.ai-markdown h2 { font-size: 1.1rem; }
+.ai-markdown h3 { font-size: 1rem; }
+.ai-markdown ul, .ai-markdown ol { padding-left: 1.4rem; margin: 0.5rem 0; }
+.ai-markdown li { margin: 0.2rem 0; }
+.ai-markdown code {
+  background: var(--color-surface-2);
+  border: 1px solid var(--color-border);
+  border-radius: 3px;
+  padding: 0.1em 0.35em;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 0.82em;
+  color: #dc2626;
+}
+.dark .ai-markdown code { color: #f87171; background: rgba(255,255,255,0.08); }
+.ai-markdown pre {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  padding: 0.75rem 1rem;
+  overflow-x: auto;
+  margin: 0.75rem 0;
+}
+.ai-markdown pre code { background: none; border: none; padding: 0; color: var(--color-text-primary); font-size: 0.82em; }
+.ai-markdown blockquote {
+  border-left: 3px solid rgb(var(--color-accent));
+  padding-left: 0.75rem;
+  margin: 0.75rem 0;
+  color: var(--color-muted);
+}
+.ai-markdown strong { font-weight: 700; color: var(--color-text-primary); }
+.ai-markdown hr { border-color: var(--color-border); margin: 1rem 0; }
+.ai-markdown table { width: 100%; border-collapse: collapse; margin: 0.75rem 0; font-size: 0.875rem; }
+.ai-markdown th, .ai-markdown td { border: 1px solid var(--color-border); padding: 0.4rem 0.6rem; text-align: left; }
+.ai-markdown th { background: var(--color-surface-2); font-weight: 600; }

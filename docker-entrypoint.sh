@@ -3,7 +3,7 @@ set -e
 
 # 1. 데이터베이스 마이그레이션 실행
 echo "🔧 Running database migrations..."
-node node_modules/prisma/build/index.js db push --accept-data-loss
+node node_modules/prisma/build/index.js db push --accept-data-loss --skip-generate
 
 # 2. 데이터베이스 시딩 (Admin 계정 생성/승격)
 echo "🌱 Seeding database..."

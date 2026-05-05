@@ -7,7 +7,7 @@ import { requireAdmin } from '@/lib/auth'
 export async function GET() {
   await requireAdmin()
   const users = await prisma.user.findMany({
-    select: { id: true, email: true, name: true, role: true, points: true, createdAt: true, image: true },
+    select: { id: true, email: true, name: true, role: true, points: true, createdAt: true, image: true, aiDisabled: true },
     orderBy: { createdAt: 'desc' },
   })
   return NextResponse.json(users)

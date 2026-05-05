@@ -56,6 +56,19 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
     return NextResponse.json({ id: user.id, points: user.points })
   }
 
+  // AI 비활성화 토글
+  if (body.aiDisabled !== undefined) {
+    const target = await prisma.user.findUnique({ where: { id: params.id }, select: { role: true } })
+    if (target?.role === 'OWNER') {
+      return NextResponse.json({ error: '최고 관리자는 변경할 수 없습니다' }, { status: 403 })
+    }
+    const user = await prisma.user.update({
+      where: { id: params.id },
+      data: { aiDisabled: Boolean(body.aiDisabled) },
+    })
+    return NextResponse.json({ id: user.id, aiDisabled: user.aiDisabled })
+  }
+
   return NextResponse.json({ error: '변경할 내용이 없습니다' }, { status: 400 })
 }
 

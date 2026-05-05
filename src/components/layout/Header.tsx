@@ -19,6 +19,7 @@ const NAV_ITEMS = [
   { href: '/contests', label: '대회' },
   { href: '/groups', label: '그룹' },
   { href: '/boards', label: '보드' },
+  { href: '/ai', label: 'AI' },
 ]
 
 export function Header() {

@@ -87,6 +87,12 @@ model User {
   streakShields      StreakShieldUsage[]
   userBanners        UserBanner[]
 
+  // AI
+  aiDisabled     Boolean         @default(true)
+  aiSubscription AiSubscription?
+  aiSessions     AiSession[]
+  aiMessages     AiMessage[]
+
   // Badges
   selectedBadgeIds  String   @default("[]") // JSON array of badge IDs to display
   selectedTitleId   String?               // badge ID of selected title
@@ -858,4 +864,43 @@ model DuelSubmission {
 
   @@unique([duelId, userId, problemId])
   @@map("duel_submissions")
+}
+
+// ───────────────────────────── AI ─────────────────────────────
+
+model AiSubscription {
+  id        String   @id @default(cuid())
+  userId    String   @unique
+  expiresAt DateTime
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("ai_subscriptions")
+}
+
+model AiSession {
+  id        String      @id @default(cuid())
+  userId    String
+  title     String      @default("새 대화")
+  user      User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  messages  AiMessage[]
+  createdAt DateTime    @default(now())
+  updatedAt DateTime    @updatedAt
+
+  @@map("ai_sessions")
+}
+
+model AiMessage {
+  id        String    @id @default(cuid())
+  userId    String
+  sessionId String
+  role      String    // "user" | "assistant"
+  content   String
+  imageUrls String    @default("[]")
+  session   AiSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt DateTime  @default(now())
+
+  @@map("ai_messages")
 }
