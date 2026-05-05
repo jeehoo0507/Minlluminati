@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server'
 import { prisma } from '@/lib/db'
 import { getAuth } from '@/lib/auth'
-import { awardBadge } from '@/lib/awardBadge'
+import { awardBadge, checkLinearAlgebraBadge } from '@/lib/awardBadge'
 import { getFirstRubyUserId } from '@/lib/scoring'
 export const dynamic = 'force-dynamic'
 
@@ -69,6 +69,11 @@ export async function POST() {
           if (solved?.correct && await awardBadge(userId, 'hidden_gambler')) awarded++
         }
       } catch (e) { errors.push(`gambler@${userId}: ${e}`) }
+
+      // ── 선형대수학자: Linear algebra 문제집 완주 ─────────────────
+      try {
+        if (await checkLinearAlgebraBadge(userId)) awarded++
+      } catch (e) { errors.push(`linear_algebra@${userId}: ${e}`) }
 
     } catch (e) {
       errors.push(`user ${userId}: ${e}`)

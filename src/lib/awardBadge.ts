@@ -74,19 +74,24 @@ export async function checkContestWinBadges(userId: string) {
 }
 
 // ── Linear algebra 문제집 완주 ────────────────────────────────────
-export async function checkLinearAlgebraBadge(userId: string) {
-  // SQLite는 mode:'insensitive' 미지원 → OR로 케이스 커버
-  const problemSet = await prisma.problemSet.findFirst({
-    where: { OR: [{ title: 'Linear algebra' }, { title: 'linear algebra' }, { title: 'Linear Algebra' }] },
+export async function checkLinearAlgebraBadge(userId: string): Promise<boolean> {
+  // SQLite는 mode:'insensitive' 미지원 → raw query로 LOWER() 비교
+  const rows = await prisma.$queryRaw<Array<{ id: string }>>`
+    SELECT id FROM problem_sets WHERE LOWER(TRIM(title)) LIKE '%linear algebra%' LIMIT 1
+  `
+  if (!rows.length) return false
+
+  const problemSet = await prisma.problemSet.findUnique({
+    where: { id: rows[0].id },
     include: { items: { select: { problemId: true } } },
   })
-  if (!problemSet || problemSet.items.length === 0) return
+  if (!problemSet || problemSet.items.length === 0) return false
 
   const problemIds = problemSet.items.map((i) => i.problemId)
   const solvedCount = await prisma.problemSubmission.count({
     where: { userId, correct: true, problemId: { in: problemIds } },
   })
-  if (solvedCount < problemIds.length) return
+  if (solvedCount < problemIds.length) return false
 
   // 뱃지가 없으면 자동 생성 (히든)
   await prisma.badge.upsert({
@@ -103,7 +108,7 @@ export async function checkLinearAlgebraBadge(userId: string) {
     update: {},
   })
 
-  await awardBadge(userId, 'hidden_linear_algebra')
+  return awardBadge(userId, 'hidden_linear_algebra')
 }
 
 // ── 하트 10개 이상 (주딱) ─────────────────────────────────────────
