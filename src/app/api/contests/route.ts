@@ -24,7 +24,7 @@ export async function POST(req: NextRequest) {
   const isOrganizer = await prisma.contestOrganizer.findUnique({ where: { userId: session.user.id } })
   if (!isAdmin && !isOrganizer) return NextResponse.json({ error: '대회 개설 권한이 없습니다' }, { status: 403 })
 
-  const { title, description, rules, durationMin, problems, prize1, prize2, prize3, contributors, teamContest, teamSize } = await req.json()
+  const { title, description, rules, durationMin, problems, prize1, prize2, prize3, contributors, teamContest, teamSize, bannerUrl } = await req.json()
   if (!title?.trim()) return NextResponse.json({ error: '대회명을 입력해주세요' }, { status: 400 })
   if (!problems?.length) return NextResponse.json({ error: '문제를 1개 이상 추가해주세요' }, { status: 400 })
 
@@ -46,6 +46,7 @@ export async function POST(req: NextRequest) {
       title: title.trim(),
       description: description?.trim() ?? '',
       rules: rules?.trim() ?? '',
+      bannerUrl: bannerUrl ?? null,
       durationMin: durationMin ?? 120,
       prize1: prize1 ? Number(prize1) : null,
       prize2: prize2 ? Number(prize2) : null,

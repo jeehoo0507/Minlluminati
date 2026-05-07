@@ -168,6 +168,7 @@ model Contest {
   title         String
   description   String
   rules         String   @default("")
+  bannerUrl     String?
   status        String   @default("DRAFT") // DRAFT | PENDING | APPROVED | ONGOING | ENDED
   startTime     DateTime?
   durationMin   Int      @default(120)

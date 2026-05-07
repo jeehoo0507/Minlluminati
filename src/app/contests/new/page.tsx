@@ -2,12 +2,13 @@
 import { useState, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import { useSession } from 'next-auth/react'
-import { Plus, Trash2, UserPlus, X, ImagePlus, RefreshCw, Ban, Eye, FileText } from 'lucide-react'
+import { Plus, Trash2, UserPlus, X, ImagePlus, RefreshCw, Ban, Eye, FileText, Image as ImageIcon } from 'lucide-react'
 import ReactMarkdown from 'react-markdown'
 import remarkMath from 'remark-math'
 import rehypeKatex from 'rehype-katex'
 import remarkGfm from 'remark-gfm'
 import toast from 'react-hot-toast'
+import { ImageCropper } from '@/components/ui/ImageCropper'
 
 interface SubAnswerDef { label: string; answer: string; extra: string[] }
 
@@ -49,6 +50,10 @@ export default function NewContestPage() {
   const [previewProblem, setPreviewProblem] = useState<number | null>(null)
   const [isTeamContest, setIsTeamContest] = useState(false)
   const [teamSize, setTeamSize] = useState(2)
+  const [bannerUrl, setBannerUrl] = useState<string | null>(null)
+  const [bannerCropSrc, setBannerCropSrc] = useState<string | null>(null)
+  const [uploadingBanner, setUploadingBanner] = useState(false)
+  const bannerFileRef = useRef<HTMLInputElement>(null)
 
   const labels = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'
 
@@ -90,6 +95,31 @@ export default function NewContestPage() {
     } finally { setUploadingIdx(null) }
   }
 
+  function onBannerFileChange(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0]
+    if (!file) return
+    e.target.value = ''
+    const reader = new FileReader()
+    reader.onload = (ev) => setBannerCropSrc(ev.target!.result as string)
+    reader.readAsDataURL(file)
+  }
+
+  async function onBannerCrop(dataUrl: string) {
+    setBannerCropSrc(null)
+    setUploadingBanner(true)
+    try {
+      const res = await fetch(dataUrl)
+      const blob = await res.blob()
+      const file = new File([blob], 'banner.jpg', { type: 'image/jpeg' })
+      const fd = new FormData(); fd.append('file', file)
+      const up = await fetch('/api/upload', { method: 'POST', body: fd })
+      if (!up.ok) { toast.error('배너 업로드 실패'); return }
+      const { url } = await up.json()
+      setBannerUrl(url)
+      toast.success('배너가 설정되었습니다')
+    } finally { setUploadingBanner(false) }
+  }
+
   async function handleSubmit() {
     if (!title.trim()) { toast.error('대회명을 입력해주세요'); return }
     for (const p of problems) {
@@ -126,6 +156,7 @@ export default function NewContestPage() {
           problems: mappedProblems, contributors,
           teamContest: isTeamContest,
           teamSize: isTeamContest ? teamSize : 1,
+          bannerUrl: bannerUrl ?? undefined,
         }),
       })
       if (!res.ok) { toast.error((await res.json()).error ?? '오류 발생'); return }
@@ -144,8 +175,66 @@ export default function NewContestPage() {
         </div>
       )}
 
+      {/* Banner cropper modal */}
+      {bannerCropSrc && (
+        <ImageCropper
+          imageSrc={bannerCropSrc}
+          defaultAspect={16 / 9}
+          outputWidth={1200}
+          title="대회 배너 영역 선택"
+          onCrop={onBannerCrop}
+          onCancel={() => setBannerCropSrc(null)}
+        />
+      )}
+
       <div className="bg-surface border border-border rounded-2xl p-6 space-y-4">
         <h2 className="text-sm font-semibold text-text-primary">기본 정보</h2>
+
+        {/* Banner upload */}
+        <div>
+          <label className="block text-xs font-medium text-text-secondary mb-1.5">대회 배너 (선택)</label>
+          {bannerUrl ? (
+            <div className="relative group rounded-xl overflow-hidden border border-border">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img src={bannerUrl} alt="배너" className="w-full h-32 object-cover" />
+              <div className="absolute inset-0 bg-black/0 group-hover:bg-black/40 transition-colors flex items-center justify-center gap-2 opacity-0 group-hover:opacity-100">
+                <button
+                  type="button"
+                  onClick={() => bannerFileRef.current?.click()}
+                  className="px-3 py-1.5 bg-white/90 text-gray-800 text-xs rounded-lg font-medium hover:bg-white transition-colors"
+                >
+                  변경
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setBannerUrl(null)}
+                  className="px-3 py-1.5 bg-red-500/90 text-white text-xs rounded-lg font-medium hover:bg-red-500 transition-colors"
+                >
+                  삭제
+                </button>
+              </div>
+            </div>
+          ) : (
+            <button
+              type="button"
+              onClick={() => bannerFileRef.current?.click()}
+              disabled={uploadingBanner}
+              className="w-full h-24 border-2 border-dashed border-border rounded-xl flex flex-col items-center justify-center gap-1.5 text-muted hover:border-accent hover:text-accent transition-colors disabled:opacity-50"
+            >
+              <ImageIcon size={20} />
+              <span className="text-xs">{uploadingBanner ? '업로드 중...' : '배너 이미지 업로드'}</span>
+              <span className="text-[10px] text-muted/60">권장: 16:9 · JPG/PNG/WebP</span>
+            </button>
+          )}
+          <input
+            ref={bannerFileRef}
+            type="file"
+            accept="image/*"
+            className="hidden"
+            onChange={onBannerFileChange}
+          />
+        </div>
+
         <div>
           <label className="block text-xs font-medium text-text-secondary mb-1.5">대회명</label>
           <input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="대회 이름을 입력하세요"

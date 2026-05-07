@@ -10,7 +10,8 @@ import Link from 'next/link'
 import { Avatar } from '@/components/ui/Avatar'
 import { TierBadge } from '@/components/ui/TierBadge'
 import { timeAgo } from '@/lib/utils'
-import { Clock, Users, CheckCircle, Play, Pencil, X, Save, Send, MessageSquare, Plus, ImagePlus, RefreshCw, Ban, UserPlus, Eye, PenLine, Trash2, Download, GripVertical, FileText, CheckCheck, XCircle } from 'lucide-react'
+import { Clock, Users, CheckCircle, Play, Pencil, X, Save, Send, MessageSquare, Plus, ImagePlus, RefreshCw, Ban, UserPlus, Eye, PenLine, Trash2, Download, GripVertical, FileText, CheckCheck, XCircle, Image as ImageIcon } from 'lucide-react'
+import { ImageCropper } from '@/components/ui/ImageCropper'
 import toast from 'react-hot-toast'
 
 interface SubAnswerDef { label: string; answer: string; extra?: string[] }
@@ -23,6 +24,7 @@ interface ContestTeam { id: string; contestId: string; name: string; description
 
 interface Contest {
   id: string; title: string; description: string; rules: string; status: string
+  bannerUrl?: string | null
   startTime: string | null; durationMin: number; organizerId: string
   prize1?: number | null; prize2?: number | null; prize3?: number | null
   teamContest?: boolean; teamSize?: number
@@ -58,8 +60,11 @@ export default function ContestPage() {
   const [uploadingProblem, setUploadingProblem] = useState<string | null>(null)
   const [editPreview, setEditPreview] = useState(false)
   const [editingInfo, setEditingInfo] = useState(false)
-  const [infoDraft, setInfoDraft] = useState({ title: '', description: '', rules: '', durationMin: 120, prize1: '' as string, prize2: '' as string, prize3: '' as string, contribs: [] as { userId: string; query: string; role: 'CONTRIBUTOR' | 'REVIEWER' }[] })
+  const [infoDraft, setInfoDraft] = useState({ title: '', description: '', rules: '', durationMin: 120, prize1: '' as string, prize2: '' as string, prize3: '' as string, contribs: [] as { userId: string; query: string; role: 'CONTRIBUTOR' | 'REVIEWER' }[], bannerUrl: null as string | null })
   const [savingInfo, setSavingInfo] = useState(false)
+  const [bannerCropSrc, setBannerCropSrc] = useState<string | null>(null)
+  const [uploadingBanner, setUploadingBanner] = useState(false)
+  const bannerFileRef = useRef<HTMLInputElement>(null)
   const [addingProblem, setAddingProblem] = useState(false)
   const [newProblem, setNewProblem] = useState({ title: '', content: '', answer: '', extraAnswers: [] as string[], subAnswers: [{ label: '(1)', answer: '', extra: [] as string[] }] as SubAnswerDef[], multiPartMode: false, isEssay: false, points: 100, allowRetry: true })
   const [savingNewProblem, setSavingNewProblem] = useState(false)
@@ -298,6 +303,7 @@ export default function ContestPage() {
           prize2: infoDraft.prize2 !== '' ? Number(infoDraft.prize2) : null,
           prize3: infoDraft.prize3 !== '' ? Number(infoDraft.prize3) : null,
           contributors: infoDraft.contribs,
+          bannerUrl: infoDraft.bannerUrl,
         }),
       })
       if (!res.ok) { toast.error((await res.json()).error ?? '오류'); return }
@@ -458,16 +464,81 @@ export default function ContestPage() {
   }
   const STATUS_TEXT: Record<string, string> = { APPROVED: '참가 신청', ONGOING: '진행 중', ENDED: '종료', PENDING: '검토 중', DRAFT: '초안' }
 
+  // Banner upload handlers (for edit mode)
+  function onBannerFileChange(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0]; if (!file) return; e.target.value = ''
+    const reader = new FileReader()
+    reader.onload = (ev) => setBannerCropSrc(ev.target!.result as string)
+    reader.readAsDataURL(file)
+  }
+  async function onBannerCrop(dataUrl: string) {
+    setBannerCropSrc(null); setUploadingBanner(true)
+    try {
+      const res = await fetch(dataUrl); const blob = await res.blob()
+      const file = new File([blob], 'banner.jpg', { type: 'image/jpeg' })
+      const fd = new FormData(); fd.append('file', file)
+      const up = await fetch('/api/upload', { method: 'POST', body: fd })
+      if (!up.ok) { toast.error('배너 업로드 실패'); return }
+      const { url } = await up.json()
+      setInfoDraft((d) => ({ ...d, bannerUrl: url }))
+      toast.success('배너가 설정되었습니다')
+    } finally { setUploadingBanner(false) }
+  }
+
   return (
     <div className="max-w-4xl mx-auto px-4 py-4 space-y-4">
+      {/* Banner cropper modal */}
+      {bannerCropSrc && (
+        <ImageCropper
+          imageSrc={bannerCropSrc}
+          defaultAspect={16 / 9}
+          outputWidth={1200}
+          title="대회 배너 영역 선택"
+          onCrop={onBannerCrop}
+          onCancel={() => setBannerCropSrc(null)}
+        />
+      )}
+
       {/* Header */}
-      <div className="bg-surface border border-border rounded-xl p-4 space-y-3">
+      <div className="bg-surface border border-border rounded-xl overflow-hidden">
+        {/* Banner (view mode) */}
+        {!editingInfo && contest.bannerUrl && (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img src={contest.bannerUrl} alt="대회 배너" className="w-full h-36 object-cover" />
+        )}
+
+        <div className="p-4 space-y-3">
         {editingInfo ? (
           <div className="space-y-3">
             <div className="flex items-center justify-between mb-1">
               <span className="text-sm font-semibold text-text-primary">대회 정보 수정</span>
               <button onClick={() => setEditingInfo(false)} className="text-muted hover:text-text-secondary"><X size={16} /></button>
             </div>
+
+            {/* Banner upload (edit mode) */}
+            <div>
+              <label className="text-xs text-muted mb-1.5 block">대회 배너</label>
+              {infoDraft.bannerUrl ? (
+                <div className="relative group rounded-xl overflow-hidden border border-border">
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img src={infoDraft.bannerUrl} alt="배너" className="w-full h-28 object-cover" />
+                  <div className="absolute inset-0 bg-black/0 group-hover:bg-black/40 transition-colors flex items-center justify-center gap-2 opacity-0 group-hover:opacity-100">
+                    <button type="button" onClick={() => bannerFileRef.current?.click()}
+                      className="px-3 py-1.5 bg-white/90 text-gray-800 text-xs rounded-lg font-medium hover:bg-white transition-colors">변경</button>
+                    <button type="button" onClick={() => setInfoDraft((d) => ({ ...d, bannerUrl: null }))}
+                      className="px-3 py-1.5 bg-red-500/90 text-white text-xs rounded-lg font-medium hover:bg-red-500 transition-colors">삭제</button>
+                  </div>
+                </div>
+              ) : (
+                <button type="button" onClick={() => bannerFileRef.current?.click()} disabled={uploadingBanner}
+                  className="w-full h-20 border-2 border-dashed border-border rounded-xl flex flex-col items-center justify-center gap-1 text-muted hover:border-accent hover:text-accent transition-colors disabled:opacity-50">
+                  <ImageIcon size={18} />
+                  <span className="text-xs">{uploadingBanner ? '업로드 중...' : '배너 이미지 업로드'}</span>
+                </button>
+              )}
+              <input ref={bannerFileRef} type="file" accept="image/*" className="hidden" onChange={onBannerFileChange} />
+            </div>
+
             <div>
               <label className="text-xs text-muted mb-1 block">대회명</label>
               <input value={infoDraft.title} onChange={(e) => setInfoDraft((d) => ({ ...d, title: e.target.value }))}
@@ -594,6 +665,7 @@ export default function ContestPage() {
                         prize2: contest.prize2 != null ? String(contest.prize2) : '',
                         prize3: contest.prize3 != null ? String(contest.prize3) : '',
                         contribs: contest.contributors.map((c) => ({ userId: c.userId, query: c.user.name ?? c.userId, role: c.role as 'CONTRIBUTOR' | 'REVIEWER' })),
+                        bannerUrl: contest.bannerUrl ?? null,
                       })
                       setEditingInfo(true)
                     }}
@@ -668,6 +740,7 @@ export default function ContestPage() {
             )
           )}
         </div>
+        </div>{/* /p-4 */}
       </div>
 
       {/* Tabs */}

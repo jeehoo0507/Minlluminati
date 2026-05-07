@@ -266,7 +266,7 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
     },
   })
 
-  if (data.title || data.description !== undefined || data.rules !== undefined || data.durationMin !== undefined || data.prize1 !== undefined || data.prize2 !== undefined || data.prize3 !== undefined) {
+  if (data.title || data.description !== undefined || data.rules !== undefined || data.durationMin !== undefined || data.prize1 !== undefined || data.prize2 !== undefined || data.prize3 !== undefined || 'bannerUrl' in data) {
     await prisma.contest.update({
       where: { id: params.id },
       data: {
@@ -277,6 +277,7 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
         ...(data.prize1 !== undefined ? { prize1: data.prize1 != null ? Number(data.prize1) : null } : {}),
         ...(data.prize2 !== undefined ? { prize2: data.prize2 != null ? Number(data.prize2) : null } : {}),
         ...(data.prize3 !== undefined ? { prize3: data.prize3 != null ? Number(data.prize3) : null } : {}),
+        ...('bannerUrl' in data ? { bannerUrl: data.bannerUrl ?? null } : {}),
       },
     })
   }
