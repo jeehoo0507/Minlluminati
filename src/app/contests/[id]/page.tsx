@@ -10,7 +10,7 @@ import Link from 'next/link'
 import { Avatar } from '@/components/ui/Avatar'
 import { TierBadge } from '@/components/ui/TierBadge'
 import { timeAgo } from '@/lib/utils'
-import { Clock, Users, CheckCircle, Play, Pencil, X, Save, Send, MessageSquare, Plus, ImagePlus, RefreshCw, Ban, UserPlus, Eye, PenLine, Trash2, Download, GripVertical, FileText, CheckCheck, XCircle, Image as ImageIcon } from 'lucide-react'
+import { Clock, Users, CheckCircle, Play, Pencil, X, Save, Send, MessageSquare, Plus, ImagePlus, RefreshCw, Ban, UserPlus, Eye, PenLine, Trash2, Download, GripVertical, FileText, CheckCheck, XCircle, Image as ImageIcon, Link2 } from 'lucide-react'
 import { ImageCropper } from '@/components/ui/ImageCropper'
 import toast from 'react-hot-toast'
 
@@ -652,6 +652,17 @@ export default function ContestPage() {
                 <div className="flex items-center gap-2">
                   <div className="text-sm text-muted flex items-center gap-1"><Clock size={13} />{contest.durationMin}분</div>
                   <div className="text-sm text-muted flex items-center gap-1"><Users size={13} />{contest._count.participants}명</div>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      navigator.clipboard.writeText(window.location.href)
+                      toast.success('링크가 복사되었습니다')
+                    }}
+                    className="flex items-center gap-1 px-2 py-1 rounded-lg border border-border text-xs text-muted hover:text-accent hover:border-accent/40 transition-colors"
+                    title="링크 복사"
+                  >
+                    <Link2 size={12} /> 공유
+                  </button>
                 </div>
                 {(isOrganizer || isAdmin) && !['ONGOING', 'ENDED'].includes(contest.status) && (
                   <button
