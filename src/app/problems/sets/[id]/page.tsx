@@ -7,7 +7,7 @@ import { Avatar } from '@/components/ui/Avatar'
 import { TierBadge } from '@/components/ui/TierBadge'
 import { ProblemTierBadge } from '@/components/ui/ProblemTierBadge'
 import { SUBJECTS, timeAgo, type SubjectKey, cn } from '@/lib/utils'
-import { ArrowLeft, BookOpen, Trash2, Plus, CheckCircle2, Circle, BarChart2, XCircle, Camera } from 'lucide-react'
+import { ArrowLeft, BookOpen, Trash2, Plus, CheckCircle2, Circle, BarChart2, XCircle, Camera, Pencil, Check, X, Globe, Lock } from 'lucide-react'
 import toast from 'react-hot-toast'
 
 interface Problem {
@@ -56,6 +56,13 @@ export default function ProblemSetDetailPage() {
   const [adding, setAdding] = useState(false)
   const [imgUploading, setImgUploading] = useState(false)
   const coverFileRef = useRef<HTMLInputElement>(null)
+
+  // Edit mode
+  const [editing, setEditing] = useState(false)
+  const [editTitle, setEditTitle] = useState('')
+  const [editDesc, setEditDesc] = useState('')
+  const [editPublic, setEditPublic] = useState(true)
+  const [saving, setSaving] = useState(false)
 
   const load = useCallback(async () => {
     const res = await fetch(`/api/problems/sets/${id}`)
@@ -107,6 +114,37 @@ export default function ProblemSetDetailPage() {
     else toast.error('삭제 실패')
   }
 
+  function startEdit() {
+    if (!set) return
+    setEditTitle(set.title)
+    setEditDesc(set.description ?? '')
+    setEditPublic(set.isPublic)
+    setEditing(true)
+  }
+
+  function cancelEdit() {
+    setEditing(false)
+  }
+
+  async function saveEdit() {
+    if (!editTitle.trim()) { toast.error('제목을 입력해주세요'); return }
+    setSaving(true)
+    try {
+      const res = await fetch(`/api/problems/sets/${id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ title: editTitle.trim(), description: editDesc.trim(), isPublic: editPublic }),
+      })
+      if (res.ok) {
+        setSet((prev) => prev ? { ...prev, title: editTitle.trim(), description: editDesc.trim(), isPublic: editPublic } : prev)
+        toast.success('저장되었습니다')
+        setEditing(false)
+      } else {
+        toast.error('저장 실패')
+      }
+    } finally { setSaving(false) }
+  }
+
   async function handleCoverUpload(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0]; if (!file) return
     setImgUploading(true)
@@ -156,7 +194,8 @@ export default function ProblemSetDetailPage() {
       {/* Header */}
       <div className="bg-surface border border-border rounded-2xl p-6 space-y-4">
         <div className="flex items-start justify-between gap-3">
-          <div className="flex items-start gap-4">
+          <div className="flex items-start gap-4 flex-1 min-w-0">
+            {/* Cover image */}
             <div className="relative w-14 h-14 rounded-xl bg-accent/10 flex items-center justify-center shrink-0 overflow-hidden">
               {set.imageUrl ? (
                 // eslint-disable-next-line @next/next/no-img-element
@@ -167,31 +206,100 @@ export default function ProblemSetDetailPage() {
               {canManage && (
                 <button onClick={() => coverFileRef.current?.click()} disabled={imgUploading}
                   className="absolute inset-0 bg-black/50 opacity-0 hover:opacity-100 flex items-center justify-center transition-opacity rounded-xl">
-                  <Camera size={16} className="text-white" />
+                  {imgUploading ? (
+                    <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                  ) : (
+                    <Camera size={16} className="text-white" />
+                  )}
                 </button>
               )}
               <input ref={coverFileRef} type="file" accept="image/*" className="hidden" onChange={handleCoverUpload} />
             </div>
-            <div>
-              <h1 className="text-xl font-bold text-text-primary">{set.title}</h1>
-              {set.description && (
-                <p className="text-sm text-text-secondary mt-1">{set.description}</p>
+
+            {/* Title / Description — view or edit */}
+            <div className="flex-1 min-w-0">
+              {editing ? (
+                <div className="space-y-2">
+                  <input
+                    value={editTitle}
+                    onChange={(e) => setEditTitle(e.target.value)}
+                    placeholder="문제집 이름"
+                    maxLength={80}
+                    className="w-full bg-background border border-border rounded-lg px-3 py-1.5 text-sm font-semibold text-text-primary focus:outline-none focus:border-accent"
+                  />
+                  <textarea
+                    value={editDesc}
+                    onChange={(e) => setEditDesc(e.target.value)}
+                    placeholder="설명 (선택)"
+                    rows={2}
+                    maxLength={300}
+                    className="w-full bg-background border border-border rounded-lg px-3 py-1.5 text-sm text-text-secondary focus:outline-none focus:border-accent resize-none"
+                  />
+                  {/* Public toggle */}
+                  <button
+                    type="button"
+                    onClick={() => setEditPublic(!editPublic)}
+                    className={cn(
+                      'flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-medium border transition-colors',
+                      editPublic
+                        ? 'border-accent/40 bg-accent/5 text-accent'
+                        : 'border-border bg-surface-2 text-text-secondary'
+                    )}
+                  >
+                    {editPublic ? <Globe size={12} /> : <Lock size={12} />}
+                    {editPublic ? '공개' : '비공개'}
+                  </button>
+                </div>
+              ) : (
+                <>
+                  <div className="flex items-center gap-2">
+                    <h1 className="text-xl font-bold text-text-primary">{set.title}</h1>
+                    {!set.isPublic && (
+                      <span className="flex items-center gap-1 text-xs text-muted border border-border rounded px-1.5 py-0.5">
+                        <Lock size={10} /> 비공개
+                      </span>
+                    )}
+                  </div>
+                  {set.description && (
+                    <p className="text-sm text-text-secondary mt-1">{set.description}</p>
+                  )}
+                  <div className="flex items-center gap-2 mt-2">
+                    <Avatar name={set.author.name} image={set.author.image} size={20} />
+                    <span className="text-sm text-text-secondary">{set.author.name}</span>
+                    <TierBadge points={set.author.points} />
+                    <span className="text-xs text-muted">{timeAgo(set.createdAt)}</span>
+                  </div>
+                </>
               )}
-              <div className="flex items-center gap-2 mt-2">
-                <Avatar name={set.author.name} image={set.author.image} size={20} />
-                <span className="text-sm text-text-secondary">{set.author.name}</span>
-                <TierBadge points={set.author.points} />
-                <span className="text-xs text-muted">{timeAgo(set.createdAt)}</span>
-              </div>
             </div>
           </div>
-          <div className="flex items-center gap-2 shrink-0">
+
+          {/* Right buttons */}
+          <div className="flex items-center gap-1.5 shrink-0">
             <span className="text-sm font-bold text-accent">{total}문제</span>
-            {canManage && (
-              <button onClick={handleDeleteSet}
-                className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs text-muted hover:text-red-400 hover:bg-red-400/5 border border-transparent hover:border-red-400/20 transition-all">
-                <Trash2 size={12} /> 삭제
-              </button>
+            {canManage && !editing && (
+              <>
+                <button onClick={startEdit}
+                  className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs text-muted hover:text-accent hover:bg-accent/5 border border-transparent hover:border-accent/20 transition-all">
+                  <Pencil size={12} /> 편집
+                </button>
+                <button onClick={handleDeleteSet}
+                  className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs text-muted hover:text-red-400 hover:bg-red-400/5 border border-transparent hover:border-red-400/20 transition-all">
+                  <Trash2 size={12} /> 삭제
+                </button>
+              </>
+            )}
+            {editing && (
+              <>
+                <button onClick={saveEdit} disabled={saving}
+                  className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-semibold bg-accent text-background hover:bg-accent-dim transition-colors disabled:opacity-50">
+                  <Check size={12} /> {saving ? '저장 중...' : '저장'}
+                </button>
+                <button onClick={cancelEdit}
+                  className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs text-muted hover:text-text-primary hover:bg-surface-2 border border-border transition-all">
+                  <X size={12} /> 취소
+                </button>
+              </>
             )}
           </div>
         </div>
