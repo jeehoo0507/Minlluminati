@@ -13,7 +13,7 @@ interface Notif { id: string; type: string; title: string; content: string; link
 
 const NAV_ITEMS = [
   { href: '/feed', label: '피드' },
-  { href: '/subjects', label: '과목별' },
+  // { href: '/subjects', label: '과목별' }, // 일시 비활성화
   { href: '/problems', label: '문제' },
   { href: '/leaderboard', label: '랭킹' },
   { href: '/contests', label: '대회' },

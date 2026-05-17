@@ -153,6 +153,7 @@ export default function ProblemsPage() {
         <Footprints size={15} />
         마라톤
       </Link>
+      {/* 대결 — 일시 비활성화
       <Link
         href="/problems/randb"
         className="w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm font-medium text-text-secondary hover:text-text-primary hover:bg-surface-2 transition-colors"
@@ -161,6 +162,7 @@ export default function ProblemsPage() {
         <Swords size={15} />
         대결
       </Link>
+      */}
 
       <div className="pt-4">
         <p className="px-3 mb-1 text-xs font-semibold text-muted uppercase tracking-wider">과목 필터</p>
