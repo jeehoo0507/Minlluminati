@@ -23,7 +23,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       <body className="min-h-screen bg-background text-text-primary">
         <Providers>
           <Header />
-          <main className="pt-14">{children}</main>
+          <main className="pt-24 md:pt-14">{children}</main>
           <Toaster
             position="bottom-right"
             toastOptions={{

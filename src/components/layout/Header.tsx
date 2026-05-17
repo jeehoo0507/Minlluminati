@@ -59,8 +59,9 @@ export function Header() {
 
   return (
     <>
-      <header className="fixed top-0 left-0 right-0 z-50 h-14 border-b border-border bg-background/90 backdrop-blur-md">
-        <div className="max-w-6xl mx-auto h-full px-4 flex items-center justify-between">
+      <header className="fixed top-0 left-0 right-0 z-50 border-b border-border bg-background/90 backdrop-blur-md">
+        {/* PC: single row / Mobile: top bar */}
+        <div className="max-w-6xl mx-auto h-14 px-4 grid grid-cols-[auto_1fr_auto] items-center gap-4">
           {/* Logo */}
           <Link href="/" className="flex items-center group shrink-0">
             <span className="text-text-primary font-bold text-lg tracking-tight">yang</span>
@@ -68,8 +69,8 @@ export function Header() {
             <span className="text-accent font-black text-xl tracking-tight">+</span>
           </Link>
 
-          {/* Desktop Nav */}
-          <nav className="hidden md:flex items-center gap-1">
+          {/* Desktop Nav — 정중앙 */}
+          <nav className="hidden md:flex items-center justify-center gap-1">
             {NAV_ITEMS.map(({ href, label }) => (
               <Link
                 key={href}
@@ -85,6 +86,9 @@ export function Header() {
               </Link>
             ))}
           </nav>
+
+          {/* Mobile: 빈 공간 */}
+          <div className="md:hidden" />
 
           {/* Right */}
           <div className="flex items-center gap-2">
@@ -204,6 +208,24 @@ export function Header() {
               <Menu size={20} className="text-text-primary" />
             </button>
           </div>
+        </div>
+
+        {/* Mobile 가로 탭바 */}
+        <div className="md:hidden flex items-center border-t border-border overflow-x-auto scrollbar-none bg-background/90">
+          {NAV_ITEMS.map(({ href, label }) => (
+            <Link
+              key={href}
+              href={href}
+              className={cn(
+                'shrink-0 flex-1 min-w-fit text-center px-4 py-2.5 text-xs font-medium transition-colors whitespace-nowrap',
+                pathname.startsWith(href)
+                  ? 'text-accent border-b-2 border-accent'
+                  : 'text-text-secondary hover:text-text-primary'
+              )}
+            >
+              {label}
+            </Link>
+          ))}
         </div>
       </header>
 
